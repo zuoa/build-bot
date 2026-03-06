@@ -269,11 +269,23 @@ export class TaskManager {
       );
 
       this.appendLog(taskId, { level: 'info', text: `已准备分支: ${branchName}` });
+      mainState.patchTask(taskId, { branchName });
+      this.emitTask(taskId);
+
+      this.appendLog(taskId, { level: 'info', text: '开始克隆任务分支到本地工作目录' });
       const workspacePath = await cloneBranchWorkspace({
         context: forkContext,
         branchName,
-        issueNumber: task.issueNumber
+        issueNumber: task.issueNumber,
+        taskId,
+        signal: abortController.signal,
+        onProgress: (message) =>
+          this.appendLog(taskId, {
+            level: 'thinking',
+            text: `Git clone: ${message}`
+          })
       });
+      this.appendLog(taskId, { level: 'success', text: '本地工作目录准备完成' });
 
       mainState.patchTask(taskId, { branchName, workspacePath });
       this.emitTask(taskId);

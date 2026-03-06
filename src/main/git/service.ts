@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mkdir, rm, statfs } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +10,15 @@ const BASE_WORKSPACE = path.join(os.homedir(), 'gitagent-workspace');
 const MIN_REQUIRED_BYTES = 200 * 1024 * 1024;
 const WORKSPACE_RM_RETRIES = 8;
 const WORKSPACE_RM_RETRY_DELAY_MS = 250;
+const CLONE_TIMEOUT_MS = Number(process.env.GIT_CLONE_TIMEOUT_MS ?? 10 * 60 * 1000);
+
+function stripAnsi(text: string): string {
+  return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
+}
+
+function sanitizeGitMessage(text: string): string {
+  return text.replace(/https:\/\/x-access-token:[^@\s]+@github\.com\//gi, 'https://github.com/');
+}
 
 function sanitizeFolderName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, '-');
@@ -37,24 +47,172 @@ async function removeWorkspaceDir(workspacePath: string): Promise<void> {
   });
 }
 
+function createLineDecoder(onLine: (line: string) => void): {
+  push: (chunk: Buffer) => void;
+  flush: () => void;
+} {
+  let remainder = '';
+
+  return {
+    push(chunk: Buffer) {
+      remainder += chunk.toString('utf8');
+      const segments = remainder.split(/\r?\n|\r/g);
+      remainder = segments.pop() ?? '';
+      segments.forEach((line) => {
+        const normalized = sanitizeGitMessage(stripAnsi(line)).trim();
+        if (normalized) {
+          onLine(normalized);
+        }
+      });
+    },
+    flush() {
+      const normalized = sanitizeGitMessage(stripAnsi(remainder)).trim();
+      if (normalized) {
+        onLine(normalized);
+      }
+      remainder = '';
+    }
+  };
+}
+
+function summarizeCloneFailure(output: string[]): string {
+  const combined = output.join('\n').toLowerCase();
+  if (
+    combined.includes('authentication failed') ||
+    combined.includes('could not read username') ||
+    combined.includes('fatal: repository') ||
+    combined.includes('permission denied')
+  ) {
+    return '克隆仓库失败：GitHub Token 无效、权限不足，或 Fork 仓库尚未就绪';
+  }
+
+  if (combined.includes("remote branch") && combined.includes('not found')) {
+    return '克隆仓库失败：远端分支尚未同步完成，请稍后重试';
+  }
+
+  const lastLine = output[output.length - 1];
+  if (lastLine) {
+    return `克隆仓库失败：${lastLine}`;
+  }
+
+  return '克隆仓库失败，请检查网络、Git 配置或仓库访问权限';
+}
+
+async function runGitClone(params: {
+  cloneUrl: string;
+  workspacePath: string;
+  branchName: string;
+  signal?: AbortSignal;
+  onProgress?: (message: string) => void;
+}): Promise<void> {
+  const args = [
+    'clone',
+    '--branch',
+    params.branchName,
+    '--single-branch',
+    '--depth',
+    '1',
+    '--progress',
+    params.cloneUrl,
+    params.workspacePath
+  ];
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('git', args, {
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GCM_INTERACTIVE: 'Never'
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    const output: string[] = [];
+    let settled = false;
+    let forceKillTimer: NodeJS.Timeout | undefined;
+
+    const finish = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+      }
+      params.signal?.removeEventListener('abort', handleAbort);
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    };
+
+    const handleAbort = () => {
+      child.kill('SIGTERM');
+      forceKillTimer = setTimeout(() => {
+        child.kill('SIGKILL');
+      }, 2_000);
+      finish(new Error('任务已取消'));
+    };
+
+    const decoder = createLineDecoder((line) => {
+      output.push(line);
+      params.onProgress?.(line);
+    });
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      forceKillTimer = setTimeout(() => {
+        child.kill('SIGKILL');
+      }, 2_000);
+      finish(new Error('克隆仓库超时，请检查网络、仓库大小或 GitHub 访问权限'));
+    }, CLONE_TIMEOUT_MS);
+
+    params.signal?.addEventListener('abort', handleAbort, { once: true });
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      decoder.push(chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      decoder.push(chunk);
+    });
+    child.on('error', (error) => {
+      finish(new Error(`执行 git clone 失败：${sanitizeGitMessage(error.message)}`));
+    });
+    child.on('close', (code) => {
+      decoder.flush();
+      if (code === 0) {
+        finish();
+        return;
+      }
+      finish(new Error(summarizeCloneFailure(output)));
+    });
+  });
+}
+
 export async function cloneBranchWorkspace(params: {
   context: ForkContext;
   branchName: string;
   issueNumber: number;
+  taskId: string;
+  signal?: AbortSignal;
+  onProgress?: (message: string) => void;
 }): Promise<string> {
   await assertDiskAvailable();
 
-  const workspaceName = `${sanitizeFolderName(params.context.fork.repo)}-${params.issueNumber}`;
+  const taskSuffix = sanitizeFolderName(params.taskId).slice(0, 8) || `${Date.now()}`;
+  const workspaceName = `${sanitizeFolderName(params.context.fork.repo)}-${params.issueNumber}-${taskSuffix}`;
   const workspacePath = path.join(BASE_WORKSPACE, workspaceName);
 
   await removeWorkspaceDir(workspacePath);
-
-  const git = simpleGit();
-  await git.clone(buildAuthedCloneUrl(params.context), workspacePath, [
-    '--branch',
-    params.branchName,
-    '--single-branch'
-  ]);
+  await runGitClone({
+    cloneUrl: buildAuthedCloneUrl(params.context),
+    workspacePath,
+    branchName: params.branchName,
+    signal: params.signal,
+    onProgress: params.onProgress
+  });
 
   return workspacePath;
 }
