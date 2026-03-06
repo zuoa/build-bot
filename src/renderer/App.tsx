@@ -527,17 +527,15 @@ export default function App(): JSX.Element {
     <div className={`shell${IS_MAC ? ' is-mac' : ''}`}>
       <div className="window-drag-strip" aria-hidden="true" />
 
+      <div className="top-brand-strip">
+        <AppLogo />
+      </div>
+
       <header className="topbar">
         <div className="topbar-main">
-          <div className="brand">
-            <div className="brand-lockup">
-              <AppLogo compact />
-              <div>
-                <p className="eyebrow">BuildBot Desktop</p>
-                <h2>{snapshot.account.login}</h2>
-              </div>
-            </div>
-            <p className="topbar-subtle">当前仓库：{snapshot.selectedRepo?.fullName ?? '未选择'}</p>
+          <div className="header-actions header-actions-left">
+            <span className="repo-label">{snapshot.selectedRepo?.fullName ?? '未选择仓库'}</span>
+            <span className="user-label">@{snapshot.account.login}</span>
           </div>
 
           <div className="header-actions">
