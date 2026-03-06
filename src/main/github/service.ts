@@ -13,6 +13,11 @@ interface RepoRef {
   repo: string;
 }
 
+export interface RepoBranchContext extends RepoRef {
+  defaultBranch: string;
+  token: string;
+}
+
 export interface ForkContext {
   upstream: RepoRef;
   fork: RepoRef;
@@ -280,6 +285,23 @@ export async function ensureFork(repoFullName: string): Promise<ForkContext> {
   };
 }
 
+async function getRepoBranchContext(repoFullName: string): Promise<RepoBranchContext> {
+  const octokit = getOctokit();
+  const account = getAccount();
+  const target = splitRepoFullName(repoFullName);
+  const { data } = await octokit.rest.repos.get({
+    owner: target.owner,
+    repo: target.repo
+  });
+
+  return {
+    owner: target.owner,
+    repo: target.repo,
+    defaultBranch: data.default_branch,
+    token: account.token
+  };
+}
+
 export function buildBranchName(issueNumber: number, issueTitle: string): string {
   const slug = issueTitle
     .toLowerCase()
@@ -411,15 +433,15 @@ async function hasAnyPullRequestForBranch(context: ForkContext, branchName: stri
 }
 
 async function createBranchRef(
-  context: ForkContext,
+  context: Pick<RepoBranchContext, 'owner' | 'repo'>,
   branchName: string,
   commitSha: string
 ): Promise<boolean> {
   const octokit = getOctokit();
   try {
     await octokit.rest.git.createRef({
-      owner: context.fork.owner,
-      repo: context.fork.repo,
+      owner: context.owner,
+      repo: context.repo,
       ref: `refs/heads/${branchName}`,
       sha: commitSha
     });
@@ -466,7 +488,7 @@ export async function createBranchForIssue(
 
   // 3) No reusable branch, create a new revision branch.
   if (existingBranches.length === 0) {
-    const created = await createBranchRef(context, baseName, branchData.commit.sha);
+    const created = await createBranchRef(context.fork, baseName, branchData.commit.sha);
     if (created) {
       return baseName;
     }
@@ -479,13 +501,52 @@ export async function createBranchForIssue(
 
   for (let revision = maxRevision + 1; revision <= maxRevision + 10; revision += 1) {
     const branchName = buildRevisionBranchName(baseName, revision);
-    const created = await createBranchRef(context, branchName, branchData.commit.sha);
+    const created = await createBranchRef(context.fork, branchName, branchData.commit.sha);
     if (created) {
       return branchName;
     }
   }
 
   throw new Error('创建分支失败，请稍后重试');
+}
+
+export async function ensureDirectBranch(
+  repoFullName: string,
+  branchName: string
+): Promise<RepoBranchContext> {
+  const octokit = getOctokit();
+  const context = await getRepoBranchContext(repoFullName);
+
+  try {
+    await octokit.rest.repos.getBranch({
+      owner: context.owner,
+      repo: context.repo,
+      branch: branchName
+    });
+    return context;
+  } catch (error) {
+    const maybe = error as { status?: number };
+    if (maybe.status !== 404) {
+      throw error;
+    }
+  }
+
+  const { data: baseBranch } = await octokit.rest.repos.getBranch({
+    owner: context.owner,
+    repo: context.repo,
+    branch: context.defaultBranch
+  });
+
+  const created = await createBranchRef(context, branchName, baseBranch.commit.sha);
+  if (!created) {
+    return context;
+  }
+
+  return context;
+}
+
+export function buildBranchUrl(repoFullName: string, branchName: string): string {
+  return `https://github.com/${repoFullName}/tree/${encodeURIComponent(branchName)}`;
 }
 
 export async function fetchReadmeHead(repoFullName: string): Promise<string> {

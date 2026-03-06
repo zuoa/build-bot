@@ -29,6 +29,10 @@ function buildAuthedCloneUrl(context) {
     const encodedToken = encodeURIComponent(context.token);
     return `https://x-access-token:${encodedToken}@github.com/${context.fork.owner}/${context.fork.repo}.git`;
 }
+function buildAuthedRepoCloneUrl(context) {
+    const encodedToken = encodeURIComponent(context.token);
+    return `https://x-access-token:${encodedToken}@github.com/${context.owner}/${context.repo}.git`;
+}
 async function removeWorkspaceDir(workspacePath) {
     await rm(workspacePath, {
         recursive: true,
@@ -158,11 +162,14 @@ async function runGitClone(params) {
 export async function cloneBranchWorkspace(params) {
     await assertDiskAvailable();
     const taskSuffix = sanitizeFolderName(params.taskId).slice(0, 8) || `${Date.now()}`;
-    const workspaceName = `${sanitizeFolderName(params.context.fork.repo)}-${params.issueNumber}-${taskSuffix}`;
+    const repoName = 'fork' in params.context ? params.context.fork.repo : params.context.repo;
+    const workspaceName = `${sanitizeFolderName(repoName)}-${params.issueNumber}-${taskSuffix}`;
     const workspacePath = path.join(BASE_WORKSPACE, workspaceName);
     await removeWorkspaceDir(workspacePath);
     await runGitClone({
-        cloneUrl: buildAuthedCloneUrl(params.context),
+        cloneUrl: 'fork' in params.context
+            ? buildAuthedCloneUrl(params.context)
+            : buildAuthedRepoCloneUrl(params.context),
         workspacePath,
         branchName: params.branchName,
         signal: params.signal,

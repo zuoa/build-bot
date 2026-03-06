@@ -1,7 +1,7 @@
 import type { TaskType } from '../../shared/types';
-import type { ForkContext } from '../github/service';
+import type { ForkContext, RepoBranchContext } from '../github/service';
 export declare function cloneBranchWorkspace(params: {
-    context: ForkContext;
+    context: ForkContext | RepoBranchContext;
     branchName: string;
     issueNumber: number;
     taskId: string;

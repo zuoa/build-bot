@@ -4,6 +4,7 @@ import type {
   EnqueueTaskInput,
   IssueDetail,
   ReviewStrictness,
+  SubmissionMode,
   TaskEntity,
   TaskFileChange,
   TaskLog
@@ -12,13 +13,16 @@ import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/serv
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import {
   addLabelToIssue,
+  buildBranchUrl,
   createIssueComment,
   createBranchForIssue,
   createPullRequest,
+  ensureDirectBranch,
   ensureFork,
   fetchReadmeHead,
   getIssueDetail,
-  splitRepoFullName
+  splitRepoFullName,
+  type ForkContext
 } from '../github/service';
 import {
   assessIssueRisk,
@@ -112,7 +116,12 @@ export class TaskManager {
     return task;
   }
 
-  private async commitTaskChanges(taskId: string, selectedFiles: string[]): Promise<TaskEntity> {
+  private async commitTaskChanges(
+    taskId: string,
+    selectedFiles: string[],
+    submissionMode: SubmissionMode,
+    forkContext?: ForkContext
+  ): Promise<TaskEntity> {
     const task = mainState.getTask(taskId);
     if (!task) {
       throw new Error('任务不存在');
@@ -137,34 +146,52 @@ export class TaskManager {
       issueNumber: task.issueNumber
     });
 
-    const diffSummary = await getFileDiffSummary(task.workspacePath, selectedFiles);
-    const summary = `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
+    let next: TaskEntity;
+    if (submissionMode === 'pr') {
+      const diffSummary = await getFileDiffSummary(task.workspacePath, selectedFiles);
+      const summary = `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
+      const context = forkContext ?? (await ensureFork(task.repoFullName));
+      const pr = await createPullRequest({
+        context,
+        branchName: task.branchName,
+        issueNumber: task.issueNumber,
+        issueTitle: task.issueTitle,
+        taskType: task.taskType,
+        changedFiles: selectedFiles,
+        summary
+      });
 
-    const forkContext = await ensureFork(task.repoFullName);
-    const pr = await createPullRequest({
-      context: forkContext,
-      branchName: task.branchName,
-      issueNumber: task.issueNumber,
-      issueTitle: task.issueTitle,
-      taskType: task.taskType,
-      changedFiles: selectedFiles,
-      summary
-    });
+      next = mainState.patchTask(task.id, {
+        status: 'completed',
+        finishedAt: Date.now(),
+        result: {
+          submissionMode,
+          prUrl: pr.url,
+          prNumber: pr.number,
+          commitSha: commit.commitSha
+        }
+      });
 
-    const next = mainState.patchTask(task.id, {
-      status: 'completed',
-      finishedAt: Date.now(),
-      result: {
-        prUrl: pr.url,
-        prNumber: pr.number,
-        commitSha: commit.commitSha
-      }
-    });
+      this.appendLog(task.id, {
+        level: 'success',
+        text: pr.existed ? `检测到已有 PR: #${pr.number}` : `PR 创建成功: #${pr.number}`
+      });
+    } else {
+      next = mainState.patchTask(task.id, {
+        status: 'completed',
+        finishedAt: Date.now(),
+        result: {
+          submissionMode,
+          branchUrl: buildBranchUrl(task.repoFullName, task.branchName),
+          commitSha: commit.commitSha
+        }
+      });
 
-    this.appendLog(task.id, {
-      level: 'success',
-      text: pr.existed ? `检测到已有 PR: #${pr.number}` : `PR 创建成功: #${pr.number}`
-    });
+      this.appendLog(task.id, {
+        level: 'success',
+        text: `分支提交成功: ${task.branchName}`
+      });
+    }
 
     this.emitTask(next.id);
     this.scheduleWorkspaceCleanup(task.id, task.workspacePath);
@@ -530,15 +557,26 @@ export class TaskManager {
         return;
       }
 
-      this.appendLog(taskId, { level: 'info', text: '开始检测/创建 Fork 仓库' });
-      const forkContext = await ensureFork(task.repoFullName);
+      const submissionMode = agentSettings.submissionMode;
+      let branchName: string;
+      let cloneContext: ForkContext | Awaited<ReturnType<typeof ensureDirectBranch>>;
+      let forkContext: ForkContext | undefined;
 
-      this.appendLog(taskId, { level: 'info', text: '开始准备任务分支' });
-      const branchName = await createBranchForIssue(
-        forkContext,
-        task.issueNumber,
-        task.issueTitle
-      );
+      if (submissionMode === 'pr') {
+        this.appendLog(taskId, { level: 'info', text: '开始检测/创建 Fork 仓库' });
+        forkContext = await ensureFork(task.repoFullName);
+        cloneContext = forkContext;
+
+        this.appendLog(taskId, { level: 'info', text: '开始准备任务分支' });
+        branchName = await createBranchForIssue(forkContext, task.issueNumber, task.issueTitle);
+      } else {
+        this.appendLog(taskId, {
+          level: 'info',
+          text: `开始准备直提分支: ${agentSettings.directBranchName}`
+        });
+        cloneContext = await ensureDirectBranch(task.repoFullName, agentSettings.directBranchName);
+        branchName = agentSettings.directBranchName;
+      }
 
       this.appendLog(taskId, { level: 'info', text: `已准备分支: ${branchName}` });
       mainState.patchTask(taskId, { branchName });
@@ -546,7 +584,7 @@ export class TaskManager {
 
       this.appendLog(taskId, { level: 'info', text: '开始克隆任务分支到本地工作目录' });
       const workspacePath = await cloneBranchWorkspace({
-        context: forkContext,
+        context: cloneContext,
         branchName,
         issueNumber: task.issueNumber,
         taskId,
@@ -621,10 +659,13 @@ export class TaskManager {
 
       this.appendLog(taskId, {
         level: 'info',
-        text: `Review Agent 已通过，检测到 ${approvedFiles.length} 个变更文件，开始自动提交并创建 PR`
+        text:
+          submissionMode === 'pr'
+            ? `Review Agent 已通过，检测到 ${approvedFiles.length} 个变更文件，开始自动提交并创建 PR`
+            : `Review Agent 已通过，检测到 ${approvedFiles.length} 个变更文件，开始自动提交到分支 ${branchName}`
       });
 
-      await this.commitTaskChanges(taskId, approvedFiles);
+      await this.commitTaskChanges(taskId, approvedFiles, submissionMode, forkContext);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : '任务执行失败，请查看日志和配置';

@@ -1,12 +1,15 @@
 export type TaskType = 'bugfix' | 'feature';
 export type AgentProvider = 'claude' | 'codex';
 export type ReviewStrictness = 'strict' | 'normal' | 'lenient';
+export type SubmissionMode = 'branch' | 'pr';
 
 export interface AgentRoleSettings {
   implementationProvider: AgentProvider;
   reviewProvider: AgentProvider;
   reviewStrictness: ReviewStrictness;
   reviewMaxRounds: number;
+  submissionMode: SubmissionMode;
+  directBranchName: string;
 }
 
 export interface AgentProviderStatus {
@@ -94,8 +97,10 @@ export interface TaskFileChange {
 }
 
 export interface TaskResult {
+  submissionMode?: SubmissionMode;
   prUrl?: string;
   prNumber?: number;
+  branchUrl?: string;
   commitSha?: string;
   error?: string;
 }

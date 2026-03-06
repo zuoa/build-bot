@@ -5,6 +5,7 @@ import type {
   AgentProvider,
   AgentProviderStatus,
   ReviewStrictness,
+  SubmissionMode,
   TaskEntity
 } from '../shared/types';
 import AppLogo from './components/AppLogo';
@@ -28,6 +29,10 @@ function reviewStrictnessLabel(strictness: ReviewStrictness): string {
     default:
       return '一般';
   }
+}
+
+function submissionModeLabel(mode: SubmissionMode): string {
+  return mode === 'pr' ? 'PR 模式' : '分支模式';
 }
 
 function formatTime(value?: number | string): string {
@@ -175,6 +180,8 @@ export default function App(): JSX.Element {
   const [reviewProvider, setReviewProvider] = useState<AgentProvider>('claude');
   const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictness>('normal');
   const [reviewMaxRounds, setReviewMaxRounds] = useState(3);
+  const [submissionMode, setSubmissionMode] = useState<SubmissionMode>('branch');
+  const [directBranchName, setDirectBranchName] = useState('develop');
   const [providerStatuses, setProviderStatuses] = useState<AgentProviderStatus[]>([]);
   const [autoModeEnabled, setAutoModeEnabled] = useState(false);
   const [autoModePollIntervalSec, setAutoModePollIntervalSec] = useState(180);
@@ -211,6 +218,8 @@ export default function App(): JSX.Element {
       setReviewProvider(settings.agentSettings.reviewProvider);
       setReviewStrictness(settings.agentSettings.reviewStrictness);
       setReviewMaxRounds(settings.agentSettings.reviewMaxRounds);
+      setSubmissionMode(settings.agentSettings.submissionMode);
+      setDirectBranchName(settings.agentSettings.directBranchName);
       setProviderStatuses(settings.providerStatuses);
       setAutoModeEnabled(settings.autoMode.enabled);
       setAutoModePollIntervalSec(settings.autoMode.pollIntervalSec);
@@ -495,15 +504,19 @@ export default function App(): JSX.Element {
         implementationProvider,
         reviewProvider,
         reviewStrictness,
-        reviewMaxRounds: Number.isFinite(reviewMaxRounds) ? Math.round(reviewMaxRounds) : 3
+        reviewMaxRounds: Number.isFinite(reviewMaxRounds) ? Math.round(reviewMaxRounds) : 3,
+        submissionMode,
+        directBranchName
       });
       setImplementationProvider(saved.implementationProvider);
       setReviewProvider(saved.reviewProvider);
       setReviewStrictness(saved.reviewStrictness);
       setReviewMaxRounds(saved.reviewMaxRounds);
+      setSubmissionMode(saved.submissionMode);
+      setDirectBranchName(saved.directBranchName);
       await refreshSettingsStatus();
       setSettingsMessage(
-        `已保存 Agent 配置：实施 ${agentProviderLabel(saved.implementationProvider)} / Review ${agentProviderLabel(saved.reviewProvider)} / 审查${reviewStrictnessLabel(saved.reviewStrictness)} / ${saved.reviewMaxRounds}轮`
+        `已保存 Agent 配置：实施 ${agentProviderLabel(saved.implementationProvider)} / Review ${agentProviderLabel(saved.reviewProvider)} / 审查${reviewStrictnessLabel(saved.reviewStrictness)} / ${saved.reviewMaxRounds}轮 / ${submissionModeLabel(saved.submissionMode)}${saved.submissionMode === 'branch' ? ` / 分支 ${saved.directBranchName}` : ''}`
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Agent 配置保存失败';
@@ -736,7 +749,7 @@ export default function App(): JSX.Element {
                 <section className="settings-section">
                   <h4>Agent Provider</h4>
                   <p className="muted">
-                    实施 Agent 和 Review Agent 可以分别指定 Claude 或 Codex，也可以单独配置 Review 审查严格度和最大轮次。
+                    实施 Agent 和 Review Agent 可以分别指定 Claude 或 Codex，也可以单独配置 Review 审查严格度、最大轮次和提交流程。
                   </p>
                   <label className="settings-input-group">
                     实施 Agent
@@ -786,6 +799,31 @@ export default function App(): JSX.Element {
                       />
                       <span className="muted">默认 3，范围 1-8</span>
                     </div>
+                  </label>
+                  <label className="settings-input-group">
+                    提交模式
+                    <select
+                      value={submissionMode}
+                      onChange={(event) => setSubmissionMode(event.target.value as SubmissionMode)}
+                    >
+                      <option value="branch">分支模式（默认）</option>
+                      <option value="pr">PR 模式</option>
+                    </select>
+                    <span className="muted">
+                      分支模式会在 Review 通过后直接提交到固定分支；PR 模式保持当前 Fork + PR 流程。
+                    </span>
+                  </label>
+                  <label className="settings-input-group">
+                    固定分支名称
+                    <input
+                      value={directBranchName}
+                      onChange={(event) => setDirectBranchName(event.target.value)}
+                      placeholder="develop"
+                      disabled={submissionMode === 'pr'}
+                    />
+                    <span className="muted">
+                      仅在分支模式生效。若目标分支不存在，会基于仓库默认分支自动创建。
+                    </span>
                   </label>
                   {visibleProviderStatuses.length > 0 ? (
                     <div className="provider-status-list">
@@ -1089,6 +1127,13 @@ export default function App(): JSX.Element {
                         </section>
                       ) : null}
 
+                      {activeTask.branchName ? (
+                        <section className="changes">
+                          <h5>目标分支</h5>
+                          <label>{activeTask.branchName}</label>
+                        </section>
+                      ) : null}
+
                       {activeTask.result?.prUrl ? (
                         <button
                           className="pr-link"
@@ -1096,6 +1141,16 @@ export default function App(): JSX.Element {
                           onClick={() => void window.desktopApi.openExternal(activeTask.result?.prUrl ?? '')}
                         >
                           打开 PR #{activeTask.result.prNumber}
+                        </button>
+                      ) : null}
+
+                      {!activeTask.result?.prUrl && activeTask.result?.branchUrl ? (
+                        <button
+                          className="pr-link"
+                          type="button"
+                          onClick={() => void window.desktopApi.openExternal(activeTask.result?.branchUrl ?? '')}
+                        >
+                          打开分支 {activeTask.branchName}
                         </button>
                       ) : null}
 

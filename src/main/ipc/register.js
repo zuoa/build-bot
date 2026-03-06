@@ -65,7 +65,9 @@ export function registerIpcHandlers(mainWindow) {
                 : 'normal',
             reviewMaxRounds: typeof settings?.reviewMaxRounds === 'number' && Number.isFinite(settings.reviewMaxRounds)
                 ? settings.reviewMaxRounds
-                : 3
+                : 3,
+            submissionMode: settings?.submissionMode === 'pr' ? 'pr' : 'branch',
+            directBranchName: typeof settings?.directBranchName === 'string' ? settings.directBranchName : ''
         });
     });
     ipcMain.handle(IPC_CHANNELS.GET_STATE, () => {

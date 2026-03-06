@@ -76,7 +76,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       reviewMaxRounds:
         typeof settings?.reviewMaxRounds === 'number' && Number.isFinite(settings.reviewMaxRounds)
           ? settings.reviewMaxRounds
-          : 3
+          : 3,
+      submissionMode: settings?.submissionMode === 'pr' ? 'pr' : 'branch',
+      directBranchName: typeof settings?.directBranchName === 'string' ? settings.directBranchName : ''
     });
   });
 
