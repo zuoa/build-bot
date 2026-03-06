@@ -1165,6 +1165,143 @@ button.ghost:hover {
   gap: 10px;
 }
 
+.settings-modal-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  min-height: 420px;
+}
+
+.settings-sidebar {
+  padding: 14px 16px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-sidebar h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-nav-btn {
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  text-align: left;
+  padding: 0 10px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.settings-nav-btn:hover {
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--ink);
+}
+
+.settings-nav-btn.is-active {
+  background: var(--ink);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.settings-close-btn {
+  margin-top: auto;
+}
+
+.settings-content {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-section h4 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-section-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-input-row input {
+  width: 100px;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-status-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.settings-status-badge.is-on {
+  background: #d1fae5;
+  color: var(--success);
+}
+
+.settings-status-badge.is-off{
+  background: #f3f4f6;
+  color: var(--ink-soft);
+}
+
+.settings-msg {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.settings-msg.is-success {
+  background: #d1fae5;
+  color: var(--success);
+}
+
+.settings-msg.is-error {
+  background: #fef2f2;
+  color: var(--error);
+}
+
+.settings-logout {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
 .issue-modal {
   width: min(720px, 100%);
   max-height: 85vh;

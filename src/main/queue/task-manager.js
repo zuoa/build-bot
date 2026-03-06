@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { checkClaudeReady, runClaudeTask } from '../claude/service';
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
-import { createBranchForIssue, createPullRequest, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
+import { addLabelToIssue, createIssueComment, createBranchForIssue, createPullRequest, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
+import { assessIssueRisk, buildHumanConfirmationComment, HUMAN_CONFIRMATION_LABEL } from '../security/issue-guard';
 import { resolveAnthropicApiKey } from '../settings/service';
 import { mainState } from '../state';
 const LOG_DUPLICATE_WINDOW_MS = 15_000;
@@ -162,6 +163,41 @@ export class TaskManager {
     scheduleWorkspaceCleanup(taskId, workspacePath) {
         void this.cleanupTaskWorkspace(taskId, workspacePath);
     }
+    async moveTaskToHumanConfirmation(taskId, issue, reasons) {
+        const task = mainState.getTask(taskId);
+        if (!task) {
+            return;
+        }
+        const summary = reasons.join('；') || '该 Issue 已被标记为需要人工确认';
+        const hasSecurityComment = issue.comments.some((comment) => comment.body.includes('<!-- buildbot-security-review -->'));
+        try {
+            if (!issue.labels.some((label) => label.name === HUMAN_CONFIRMATION_LABEL)) {
+                await addLabelToIssue(task.repoFullName, task.issueNumber, HUMAN_CONFIRMATION_LABEL);
+            }
+            if (!hasSecurityComment) {
+                await createIssueComment(task.repoFullName, task.issueNumber, buildHumanConfirmationComment(reasons));
+            }
+            this.appendLog(taskId, {
+                level: 'info',
+                text: hasSecurityComment
+                    ? `Issue 已存在人工确认评论，已补充标签 ${HUMAN_CONFIRMATION_LABEL}`
+                    : `已在 Issue 中写入人工确认说明，并添加标签 ${HUMAN_CONFIRMATION_LABEL}`
+            });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.appendLog(taskId, {
+                level: 'error',
+                text: `写入人工确认评论或标签失败：${message}`
+            });
+        }
+        const next = mainState.patchTask(taskId, {
+            status: 'awaiting_human_confirmation',
+            finishedAt: Date.now(),
+            result: { error: `安全检查已拦截任务：${summary}` }
+        });
+        this.emitTask(next.id);
+    }
     appendLog(taskId, log) {
         const task = mainState.getTask(taskId);
         if (!task) {
@@ -208,6 +244,16 @@ export class TaskManager {
             const anthropicApiKey = await resolveAnthropicApiKey();
             await checkClaudeReady(anthropicApiKey);
             const issue = await getIssueDetail(task.repoFullName, task.issueNumber);
+            this.appendLog(taskId, { level: 'info', text: '开始执行 Issue 安全检查' });
+            const risk = assessIssueRisk(issue);
+            if (risk.blocked) {
+                this.appendLog(taskId, {
+                    level: 'error',
+                    text: `安全检查命中，任务已转人工确认：${risk.reasons.join('；')}`
+                });
+                await this.moveTaskToHumanConfirmation(taskId, issue, risk.reasons);
+                return;
+            }
             this.appendLog(taskId, { level: 'info', text: '开始检测/创建 Fork 仓库' });
             const forkContext = await ensureFork(task.repoFullName);
             this.appendLog(taskId, { level: 'info', text: '开始准备任务分支' });

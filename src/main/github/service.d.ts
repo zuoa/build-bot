@@ -19,6 +19,8 @@ export declare function listRepos(page?: number): Promise<RepoSummary[]>;
 export declare function getRepo(fullName: string): Promise<RepoSummary>;
 export declare function listIssues(repoFullName: string, filter: IssueFilter): Promise<IssueSummary[]>;
 export declare function getIssueDetail(repoFullName: string, issueNumber: number): Promise<IssueDetail>;
+export declare function addLabelToIssue(repoFullName: string, issueNumber: number, label: string): Promise<void>;
+export declare function createIssueComment(repoFullName: string, issueNumber: number, body: string): Promise<void>;
 export declare function ensureFork(repoFullName: string): Promise<ForkContext>;
 export declare function buildBranchName(issueNumber: number, issueTitle: string): string;
 export declare function createBranchForIssue(context: ForkContext, issueNumber: number, issueTitle: string): Promise<string>;
