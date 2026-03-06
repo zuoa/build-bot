@@ -907,9 +907,13 @@ export default function App(): JSX.Element {
                   ) : null}
 
                   {activeTask.result?.prUrl ? (
-                    <a className="pr-link" href={activeTask.result.prUrl} target="_blank" rel="noreferrer">
+                    <button
+                      className="pr-link"
+                      type="button"
+                      onClick={() => void window.desktopApi.openExternal(activeTask.result!.prUrl)}
+                    >
                       打开 PR #{activeTask.result.prNumber}
-                    </a>
+                    </button>
                   ) : null}
 
                   <div className="log-box" ref={logBoxRef}>
