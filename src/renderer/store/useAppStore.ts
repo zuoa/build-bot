@@ -25,7 +25,7 @@ interface AppStore {
   selectRepo: (fullName: string) => Promise<void>;
   loadIssues: () => Promise<void>;
   loadIssueDetail: (issueNumber: number) => Promise<IssueDetail>;
-  enqueueTask: (input: EnqueueTaskInput) => Promise<void>;
+  enqueueTask: (input: EnqueueTaskInput) => Promise<TaskEntity>;
   confirmTaskCommit: (input: ConfirmCommitInput) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
 }
@@ -260,6 +260,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           tasks: upsertTask(state.snapshot.tasks, task)
         }
       }));
+      return task;
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '任务创建失败' });
       throw error;

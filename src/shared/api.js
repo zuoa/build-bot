@@ -1,6 +1,9 @@
 export const IPC_CHANNELS = {
     LOGIN_WITH_TOKEN: 'auth:login-with-token',
     LOGOUT: 'auth:logout',
+    GET_SETTINGS: 'settings:get',
+    SAVE_ANTHROPIC_API_KEY: 'settings:save-anthropic-api-key',
+    CLEAR_ANTHROPIC_API_KEY: 'settings:clear-anthropic-api-key',
     GET_STATE: 'app:get-state',
     LIST_REPOS: 'github:list-repos',
     SELECT_REPO: 'github:select-repo',

@@ -14,6 +14,15 @@ const desktopApi: DesktopApi = {
   logout() {
     return ipcRenderer.invoke(IPC_CHANNELS.LOGOUT);
   },
+  getSettings() {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS);
+  },
+  saveAnthropicApiKey(key: string) {
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_ANTHROPIC_API_KEY, key);
+  },
+  clearAnthropicApiKey() {
+    return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY);
+  },
   getState() {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_STATE);
   },

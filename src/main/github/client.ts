@@ -36,8 +36,16 @@ export async function bootstrapSessionFromKeychain(): Promise<AuthSession | unde
 
   try {
     return await loginWithToken(token);
-  } catch {
-    await clearToken();
+  } catch (error) {
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: number }).status)
+        : undefined;
+
+    // 仅在明确 token 无效时清除；网络异常/限流等情况保留 token。
+    if (status === 401) {
+      await clearToken();
+    }
     return undefined;
   }
 }

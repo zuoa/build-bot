@@ -4,6 +4,7 @@ import type { ConfirmCommitInput, EnqueueTaskInput, IssueFilter } from '../../sh
 import { bootstrapSessionFromKeychain, loginWithToken, logoutGithub } from '../github/client';
 import { getIssueDetail, getRepo, listIssues, listRepos } from '../github/service';
 import { initTaskManager } from '../queue/task-manager';
+import { clearAnthropicApiKey, hasAnthropicApiKey, saveAnthropicApiKey } from '../settings/service';
 import { mainState } from '../state';
 
 export async function bootstrapAuthFromKeychain(): Promise<void> {
@@ -27,6 +28,20 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.LOGOUT, async () => {
     await logoutGithub();
     mainState.clearOnLogout();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
+    return {
+      hasAnthropicApiKey: await hasAnthropicApiKey()
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SAVE_ANTHROPIC_API_KEY, async (_, key: string) => {
+    await saveAnthropicApiKey(key);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY, async () => {
+    await clearAnthropicApiKey();
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_STATE, () => {

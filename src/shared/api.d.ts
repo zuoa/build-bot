@@ -2,6 +2,11 @@ import type { AppStateSnapshot, ConfirmCommitInput, EnqueueTaskInput, IssueDetai
 export interface DesktopApi {
     loginWithToken(token: string): Promise<boolean>;
     logout(): Promise<void>;
+    getSettings(): Promise<{
+        hasAnthropicApiKey: boolean;
+    }>;
+    saveAnthropicApiKey(key: string): Promise<void>;
+    clearAnthropicApiKey(): Promise<void>;
     getState(): Promise<AppStateSnapshot>;
     listRepos(page?: number): Promise<RepoSummary[]>;
     selectRepo(fullName: string): Promise<void>;
@@ -15,6 +20,9 @@ export interface DesktopApi {
 export declare const IPC_CHANNELS: {
     readonly LOGIN_WITH_TOKEN: "auth:login-with-token";
     readonly LOGOUT: "auth:logout";
+    readonly GET_SETTINGS: "settings:get";
+    readonly SAVE_ANTHROPIC_API_KEY: "settings:save-anthropic-api-key";
+    readonly CLEAR_ANTHROPIC_API_KEY: "settings:clear-anthropic-api-key";
     readonly GET_STATE: "app:get-state";
     readonly LIST_REPOS: "github:list-repos";
     readonly SELECT_REPO: "github:select-repo";
