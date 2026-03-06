@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/api';
 import type { AutoModeSettings, EnqueueTaskInput, IssueFilter } from '../../shared/types';
 import { AutoModeService } from '../automation/service';
@@ -133,5 +133,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle(IPC_CHANNELS.CANCEL_TASK, async (_, taskId: string) => {
     await taskManager.cancelTask(taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
+    await shell.openExternal(url);
   });
 }

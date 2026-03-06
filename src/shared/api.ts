@@ -23,6 +23,7 @@ export interface DesktopApi {
   enqueueTask(input: EnqueueTaskInput): Promise<TaskEntity>;
   cancelTask(taskId: string): Promise<void>;
   onTaskUpdated(listener: (task: TaskEntity) => void): () => void;
+  openExternal(url: string): Promise<void>;
 }
 
 export const IPC_CHANNELS = {
@@ -39,5 +40,6 @@ export const IPC_CHANNELS = {
   GET_ISSUE_DETAIL: 'github:get-issue-detail',
   ENQUEUE_TASK: 'task:enqueue',
   CANCEL_TASK: 'task:cancel',
-  TASK_UPDATED: 'event:task-updated'
+  TASK_UPDATED: 'event:task-updated',
+  OPEN_EXTERNAL: 'app:open-external'
 } as const;
