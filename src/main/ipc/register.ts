@@ -34,6 +34,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.LIST_REPOS, async (_, page = 1) => {
+    console.info(`[BuildBot][IPC] listRepos page=${page}`);
     const repos = await listRepos(page);
     if (page === 1) {
       mainState.setRepos(repos);
@@ -48,6 +49,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.SELECT_REPO, async (_, fullName: string) => {
+    console.info(`[BuildBot][IPC] selectRepo fullName=${fullName}`);
     const repo = await getRepo(fullName);
     mainState.setSelectedRepo(repo);
   });
@@ -57,8 +59,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     if (!selected) {
       throw new Error('请先选择仓库');
     }
+    console.info(
+      `[BuildBot][IPC] listIssues repo=${selected.fullName} state=${filter.state} labels=${filter.labels.join(
+        ','
+      )} assignee=${filter.assignee} keyword=${filter.keyword}`
+    );
     const issues = await listIssues(selected.fullName, filter);
     mainState.setIssues(issues);
+    console.info(`[BuildBot][IPC] listIssues done count=${issues.length}`);
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_ISSUE_DETAIL, async (_, issueNumber: number) => {

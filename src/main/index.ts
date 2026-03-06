@@ -69,6 +69,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   }
 
   const window = new BrowserWindow(windowOptions);
+  registerIpcHandlers(window);
   applyDockIcon(iconPath);
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -86,7 +87,6 @@ async function createMainWindow(): Promise<BrowserWindow> {
     await window.loadFile(distHtmlPath);
   }
 
-  registerIpcHandlers(window);
   return window;
 }
 

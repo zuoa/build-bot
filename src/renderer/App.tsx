@@ -56,6 +56,41 @@ function markdownHtml(content: string): string {
   }
 }
 
+function parseRepoTarget(
+  value: string
+): { fullName: string; issueNumber?: number } | undefined {
+  const input = value.trim();
+  if (!input) {
+    return undefined;
+  }
+
+  if (/^https?:\/\//i.test(input)) {
+    try {
+      const url = new URL(input);
+      if (!/github\.com$/i.test(url.hostname)) {
+        return undefined;
+      }
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts.length < 2) {
+        return undefined;
+      }
+      const fullName = `${parts[0]}/${parts[1]}`;
+      if (parts[2] === 'issues' && parts[3] && /^\\d+$/.test(parts[3])) {
+        return { fullName, issueNumber: Number(parts[3]) };
+      }
+      return { fullName };
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (/^[^/\\s]+\\/[^/\\s]+$/.test(input)) {
+    return { fullName: input };
+  }
+
+  return undefined;
+}
+
 export default function App(): JSX.Element {
   const {
     snapshot,
@@ -79,20 +114,27 @@ export default function App(): JSX.Element {
   } = useAppStore();
 
   const [token, setToken] = useState('');
+  const [repoJump, setRepoJump] = useState('');
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [fileSelection, setFileSelection] = useState<Record<string, Record<string, boolean>>>({});
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     attachTaskListener();
-    void init().then(async () => {
-      const state = useAppStore.getState().snapshot;
-      if (state.account) {
-        await loadRepos(1);
-        if (useAppStore.getState().snapshot.selectedRepo) {
-          await loadIssues();
+    void init()
+      .then(async () => {
+        const state = useAppStore.getState().snapshot;
+        if (state.account) {
+          await loadRepos(1);
+          if (useAppStore.getState().snapshot.selectedRepo) {
+            await loadIssues();
+          }
         }
-      }
-    });
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : '初始化失败';
+        setError(message);
+      });
   }, [attachTaskListener, init, loadIssues, loadRepos]);
 
   useEffect(() => {
@@ -136,11 +178,52 @@ export default function App(): JSX.Element {
   }
 
   async function handleFilterRefresh(): Promise<void> {
-    await loadIssues();
+    setRefreshing(true);
+    setError(undefined);
+    try {
+      await loadIssues();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Issue 刷新失败';
+      setError(message);
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   async function handleRepoChange(fullName: string): Promise<void> {
-    await selectRepo(fullName);
+    setRefreshing(true);
+    setError(undefined);
+    try {
+      await selectRepo(fullName);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '切换仓库失败';
+      setError(message);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function handleRepoJump(): Promise<void> {
+    const target = parseRepoTarget(repoJump);
+    if (!target) {
+      setError('请输入 owner/repo 或 GitHub Issue URL');
+      return;
+    }
+
+    setRefreshing(true);
+    setError(undefined);
+    try {
+      await selectRepo(target.fullName);
+      if (target.issueNumber) {
+        await loadIssueDetail(target.issueNumber);
+      }
+      setRepoJump('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '跳转失败';
+      setError(message);
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   async function launchTask(mode: 'bugfix' | 'feature'): Promise<void> {
@@ -239,6 +322,15 @@ export default function App(): JSX.Element {
             ))}
           </select>
 
+          <input
+            value={repoJump}
+            onChange={(event) => setRepoJump(event.target.value)}
+            placeholder="owner/repo 或 Issue URL"
+          />
+          <button className="ghost" disabled={loading || refreshing} onClick={() => void handleRepoJump()}>
+            跳转
+          </button>
+
           <select
             value={filter.state}
             onChange={(event) => setFilter({ state: event.target.value as 'open' | 'closed' | 'all' })}
@@ -276,7 +368,9 @@ export default function App(): JSX.Element {
             ))}
           </select>
 
-          <button onClick={() => void handleFilterRefresh()}>刷新 Issue</button>
+          <button disabled={loading || refreshing} onClick={() => void handleFilterRefresh()}>
+            {refreshing ? '刷新中...' : '刷新 Issue'}
+          </button>
           <button className="ghost" onClick={() => void logout()}>
             退出
           </button>

@@ -62,6 +62,7 @@ async function createMainWindow() {
         };
     }
     const window = new BrowserWindow(windowOptions);
+    registerIpcHandlers(window);
     applyDockIcon(iconPath);
     const devServerUrl = process.env.VITE_DEV_SERVER_URL;
     const distHtmlPath = path.join(app.getAppPath(), 'dist/index.html');
@@ -79,7 +80,6 @@ async function createMainWindow() {
     else {
         await window.loadFile(distHtmlPath);
     }
-    registerIpcHandlers(window);
     return window;
 }
 app
