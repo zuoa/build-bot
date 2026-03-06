@@ -190,10 +190,10 @@ export class TaskManager {
                 cwd: params.workspacePath,
                 prompt: this.buildReviewPrompt(params.issue, params.readmeHead, params.taskType, changedFiles, diffSummary, round),
                 taskType: params.taskType,
-                provider: params.provider,
+                provider: params.reviewProvider,
                 signal: params.signal,
-                readOnly: params.provider === 'codex',
-                logPrefix: `${agentProviderLabel(params.provider)} Review R${round}`
+                readOnly: params.reviewProvider === 'codex',
+                logPrefix: `${agentProviderLabel(params.reviewProvider)} Review R${round}`
             });
             const decision = this.parseReviewDecision(reviewOutput);
             this.appendLog(params.taskId, {
@@ -215,16 +215,16 @@ export class TaskManager {
             }
             this.appendLog(params.taskId, {
                 level: 'info',
-                text: `开始第 ${round} 次返工，修复 Review Agent 提出的必须修改项`
+                text: `开始第 ${round} 次返工，由 Code Agent 修复 Review Agent 提出的必须修改项`
             });
             await this.runAgent({
                 taskId: params.taskId,
                 cwd: params.workspacePath,
                 prompt: this.buildRevisionPrompt(params.issue, params.readmeHead, params.taskType, changedFiles, diffSummary, decision, round),
                 taskType: params.taskType,
-                provider: params.provider,
+                provider: params.implementationProvider,
                 signal: params.signal,
-                logPrefix: `${agentProviderLabel(params.provider)} 修复 R${round}`
+                logPrefix: `${agentProviderLabel(params.implementationProvider)} 修复 R${round}`
             });
             changedFiles = await listChangedFiles(params.workspacePath);
             if (changedFiles.length === 0) {
@@ -454,7 +454,8 @@ export class TaskManager {
                 issue,
                 readmeHead,
                 taskType: task.taskType,
-                provider: agentSettings.reviewProvider,
+                reviewProvider: agentSettings.reviewProvider,
+                implementationProvider: agentSettings.implementationProvider,
                 signal: abortController.signal,
                 changedFiles
             });
