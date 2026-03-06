@@ -1,3 +1,4 @@
+import { scheduleTaskHistoryPersist } from './task-history/store';
 class MainState {
     account;
     repos = [];
@@ -30,15 +31,21 @@ class MainState {
     setSelectedIssue(issue) {
         this.selectedIssue = issue;
     }
+    setTasks(tasks) {
+        this.tasks = [...tasks];
+        this.persistTasks();
+    }
     upsertTask(nextTask) {
         const index = this.tasks.findIndex((task) => task.id === nextTask.id);
         if (index === -1) {
             this.tasks = [nextTask, ...this.tasks];
+            this.persistTasks();
             return nextTask;
         }
         const cloned = [...this.tasks];
         cloned[index] = nextTask;
         this.tasks = cloned;
+        this.persistTasks();
         return nextTask;
     }
     patchTask(taskId, patch) {
@@ -57,7 +64,9 @@ class MainState {
         this.selectedRepo = undefined;
         this.issues = [];
         this.selectedIssue = undefined;
-        this.tasks = [];
+    }
+    persistTasks() {
+        scheduleTaskHistoryPersist(this.tasks);
     }
 }
 export const mainState = new MainState();
