@@ -233,6 +233,54 @@ export async function listChangedFiles(workspacePath: string): Promise<string[]>
   return Array.from(files).sort((a, b) => a.localeCompare(b));
 }
 
+export async function getFileDiffSummary(
+  workspacePath: string,
+  files: string[]
+): Promise<string> {
+  if (files.length === 0) {
+    return '无文件变更';
+  }
+
+  const git = simpleGit(workspacePath);
+  const summaries: string[] = [];
+
+  for (const file of files) {
+    try {
+      const status = await git.status([file]);
+      const isDeleted = status.deleted.includes(file);
+      const isNew = status.not_added.includes(file) || status.created.includes(file);
+
+      if (isDeleted) {
+        summaries.push(`- \`${file}\`: 删除文件`);
+        continue;
+      }
+
+      if (isNew) {
+        summaries.push(`- \`${file}\`: 新增文件`);
+        continue;
+      }
+
+      const diff = await git.diff(['--stat', file]);
+      const lines = diff.trim().split('\n');
+      const statLine = lines[lines.length - 1];
+
+      if (statLine) {
+        const insertMatch = statLine.match(/(\d+)\s+insertion/);
+        const deleteMatch = statLine.match(/(\d+)\s+deletion/);
+        const insertions = insertMatch ? insertMatch[1] : '0';
+        const deletions = deleteMatch ? deleteMatch[1] : '0';
+        summaries.push(`- \`${file}\`: +${insertions}/-${deletions} 行`);
+      } else {
+        summaries.push(`- \`${file}\`: 已修改`);
+      }
+    } catch {
+      summaries.push(`- \`${file}\`: 变更详情获取失败`);
+    }
+  }
+
+  return summaries.join('\n');
+}
+
 function buildCommitMessage(taskType: TaskType, issueTitle: string, issueNumber: number): string {
   const prefix = taskType === 'feature' ? 'feat' : 'fix';
   const normalized = issueTitle

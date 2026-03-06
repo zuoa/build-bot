@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { checkClaudeReady, runClaudeTask } from '../claude/service';
-import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles } from '../git/service';
+import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import { createBranchForIssue, createPullRequest, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
 import { resolveAnthropicApiKey } from '../settings/service';
 import { mainState } from '../state';
@@ -76,6 +76,8 @@ export class TaskManager {
             issueTitle: task.issueTitle,
             issueNumber: task.issueNumber
         });
+        const diffSummary = await getFileDiffSummary(task.workspacePath, selectedFiles);
+        const summary = `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
         const forkContext = await ensureFork(task.repoFullName);
         const pr = await createPullRequest({
             context: forkContext,
@@ -84,7 +86,7 @@ export class TaskManager {
             issueTitle: task.issueTitle,
             taskType: task.taskType,
             changedFiles: selectedFiles,
-            summary: 'AI 已根据 Issue 描述与评论完成代码改动，并通过 GitAgent 自动提交。'
+            summary
         });
         const next = mainState.patchTask(task.id, {
             status: 'completed',
@@ -208,11 +210,21 @@ export class TaskManager {
             this.appendLog(taskId, { level: 'info', text: '开始准备任务分支' });
             const branchName = await createBranchForIssue(forkContext, task.issueNumber, task.issueTitle);
             this.appendLog(taskId, { level: 'info', text: `已准备分支: ${branchName}` });
+            mainState.patchTask(taskId, { branchName });
+            this.emitTask(taskId);
+            this.appendLog(taskId, { level: 'info', text: '开始克隆任务分支到本地工作目录' });
             const workspacePath = await cloneBranchWorkspace({
                 context: forkContext,
                 branchName,
-                issueNumber: task.issueNumber
+                issueNumber: task.issueNumber,
+                taskId,
+                signal: abortController.signal,
+                onProgress: (message) => this.appendLog(taskId, {
+                    level: 'thinking',
+                    text: `Git clone: ${message}`
+                })
             });
+            this.appendLog(taskId, { level: 'success', text: '本地工作目录准备完成' });
             mainState.patchTask(taskId, { branchName, workspacePath });
             this.emitTask(taskId);
             const readmeHead = await fetchReadmeHead(task.repoFullName);
