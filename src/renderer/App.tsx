@@ -527,6 +527,14 @@ export default function App(): JSX.Element {
     <div className={`shell${IS_MAC ? ' is-mac' : ''}`}>
       <div className="window-drag-strip" aria-hidden="true" />
 
+      <div className="topbar-compact">
+        <div className="topbar-brand">
+          <div className="brand-lockup">
+            <AppLogo compact />
+            <div>
+              <p className="eyebrow">BuildBot Desktop</p>
+              <h2>{snapshot.account.login}</h2>
+            </div>
       <div className="top-brand-strip">
         <AppLogo />
       </div>
@@ -565,29 +573,49 @@ export default function App(): JSX.Element {
           </div>
         </div>
 
-        <div className="topbar-stats">
-          <div className="stat-card">
-            <span>Issues</span>
-            <strong>{snapshot.issues.length}</strong>
-            <small>{openIssueCount} Open</small>
+        <div className="topbar-right">
+          <div className="topbar-stats-compact">
+            <span className="stat-pill" title={`${taskStats.running} 运行中 / ${taskStats.pending} 等待中`}>
+              <span className="stat-dot stat-dot-run" />
+              {taskStats.running}/{taskStats.pending}
+            </span>
+            <span className="stat-pill" title={`${taskStats.failed} 失败`}>
+              <span className="stat-dot stat-dot-error" />
+              {taskStats.failed}
+            </span>
+            <span className="stat-pill" title={`${taskStats.completed} 已完成 / 共 ${snapshot.tasks.length} 任务`}>
+              <span className="stat-dot stat-dot-success" />
+              {taskStats.completed}
+            </span>
           </div>
-          <div className="stat-card">
-            <span>运行中</span>
-            <strong>{taskStats.running}</strong>
-            <small>{taskStats.pending} 等待中</small>
-          </div>
-          <div className="stat-card">
-            <span>失败</span>
-            <strong>{taskStats.failed}</strong>
-            <small>含取消任务</small>
-          </div>
-          <div className="stat-card">
-            <span>已完成</span>
-            <strong>{taskStats.completed}</strong>
-            <small>总任务 {snapshot.tasks.length}</small>
-          </div>
+
+          <button
+            className="repo-switcher-btn"
+            onClick={handleOpenRepoSwitcher}
+            title="切换仓库"
+            aria-label="切换仓库"
+          >
+            <FolderOpen aria-hidden="true" className="repo-icon" />
+            <span className="repo-name">{snapshot.selectedRepo?.fullName ?? '未选择'}</span>
+          </button>
+
+          <button
+            className={`ghost auto-toggle-btn ${autoModeEnabled ? 'is-on' : 'is-off'}`}
+            onClick={() => void handleQuickToggleAutoMode()}
+            disabled={savingSettings}
+            title={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+            aria-label={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+          >
+            <span className="auto-toggle-dot" aria-hidden="true" />
+            自动模式 {autoModeEnabled ? '开' : '关'}
+          </button>
+          {autoModeEnabled && autoModeCountdown > 0 ? (
+            <span className="auto-countdown" title={`下次轮询还有 ${autoModeCountdown} 秒`}>
+              {autoModeCountdown}s
+            </span>
+          ) : null}
         </div>
-      </header>
+      </div>
 
       <button
         className="icon-btn icon-plain global-settings-btn"
