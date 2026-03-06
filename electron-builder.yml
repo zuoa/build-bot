@@ -1,0 +1,17 @@
+appId: com.gitagent.desktop
+productName: GitAgent Desktop
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+directories:
+  output: release
+mac:
+  target:
+    - dmg
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
