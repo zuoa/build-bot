@@ -21,8 +21,6 @@ function statusLabel(status: TaskEntity['status']): string {
       return '等待中';
     case 'running':
       return '执行中';
-    case 'awaiting_commit':
-      return '待提交';
     case 'completed':
       return '已完成';
     case 'failed':
@@ -41,8 +39,6 @@ function statusClass(status: TaskEntity['status']): string {
     case 'failed':
     case 'cancelled':
       return 'status status-error';
-    case 'awaiting_commit':
-      return 'status status-warn';
     case 'running':
       return 'status status-run';
     default:
@@ -125,14 +121,12 @@ export default function App(): JSX.Element {
     loadIssues,
     loadIssueDetail,
     enqueueTask,
-    confirmTaskCommit,
     cancelTask
   } = useAppStore();
 
   const [token, setToken] = useState('');
   const [repoJump, setRepoJump] = useState('');
   const [activeTaskId, setActiveTaskId] = useState<string>('');
-  const [fileSelection, setFileSelection] = useState<Record<string, Record<string, boolean>>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [repoSwitcherOpen, setRepoSwitcherOpen] = useState(false);
@@ -254,7 +248,7 @@ export default function App(): JSX.Element {
     const stats = {
       running: 0,
       pending: 0,
-      awaitingCommit: 0,
+      failed: 0,
       completed: 0
     };
     snapshot.tasks.forEach((task) => {
@@ -265,11 +259,12 @@ export default function App(): JSX.Element {
         case 'pending':
           stats.pending += 1;
           break;
-        case 'awaiting_commit':
-          stats.awaitingCommit += 1;
-          break;
         case 'completed':
           stats.completed += 1;
+          break;
+        case 'failed':
+        case 'cancelled':
+          stats.failed += 1;
           break;
         default:
           break;
@@ -463,28 +458,6 @@ export default function App(): JSX.Element {
     await persistAutoModeSettings(!autoModeEnabled, autoModePollIntervalSec, false);
   }
 
-  async function handleConfirmCommit(task: TaskEntity): Promise<void> {
-    const selected = task.changedFiles
-      .filter((file) => fileSelection[task.id]?.[file.path] ?? true)
-      .map((file) => file.path);
-
-    await confirmTaskCommit({ taskId: task.id, selectedFiles: selected });
-  }
-
-  function toggleFile(taskId: string, filePath: string): void {
-    setFileSelection((prev) => {
-      const row = prev[taskId] ?? {};
-      const next = !(row[filePath] ?? true);
-      return {
-        ...prev,
-        [taskId]: {
-          ...row,
-          [filePath]: next
-        }
-      };
-    });
-  }
-
   if (!initialized) {
     return <div className="loading-screen">正在初始化 BuildBot Desktop...</div>;
   }
@@ -572,9 +545,9 @@ export default function App(): JSX.Element {
             <small>{taskStats.pending} 等待中</small>
           </div>
           <div className="stat-card">
-            <span>待提交</span>
-            <strong>{taskStats.awaitingCommit}</strong>
-            <small>待人工确认</small>
+            <span>失败</span>
+            <strong>{taskStats.failed}</strong>
+            <small>含取消任务</small>
           </div>
           <div className="stat-card">
             <span>已完成</span>
@@ -851,23 +824,12 @@ export default function App(): JSX.Element {
                 <div className="task-error-banner">{activeTask.result.error}</div>
               ) : null}
 
-              {activeTask.status === 'awaiting_commit' ? (
+              {activeTask.changedFiles.length > 0 ? (
                 <section className="changes">
-                  <h5>待提交文件</h5>
-                  {activeTask.changedFiles.map((file) => {
-                    const selected = fileSelection[activeTask.id]?.[file.path] ?? true;
-                    return (
-                      <label key={file.path}>
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => toggleFile(activeTask.id, file.path)}
-                        />
-                        {file.path}
-                      </label>
-                    );
-                  })}
-                  <button onClick={() => void handleConfirmCommit(activeTask)}>确认提交并创建 PR</button>
+                  <h5>变更文件</h5>
+                  {activeTask.changedFiles.map((file) => (
+                    <label key={file.path}>{file.path}</label>
+                  ))}
                 </section>
               ) : null}
 
