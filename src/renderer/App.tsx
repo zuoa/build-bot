@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { FolderOpen, Settings } from 'lucide-react';
 import { marked } from 'marked';
 import type { TaskEntity } from '../shared/types';
 import AppLogo from './components/AppLogo';
@@ -134,6 +135,8 @@ export default function App(): JSX.Element {
   const [fileSelection, setFileSelection] = useState<Record<string, Record<string, boolean>>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [repoSwitcherOpen, setRepoSwitcherOpen] = useState(false);
+  const [repoCandidate, setRepoCandidate] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [hasAnthropicApiKey, setHasAnthropicApiKey] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -186,6 +189,7 @@ export default function App(): JSX.Element {
     () => snapshot.tasks.find((task) => task.id === activeTaskId),
     [activeTaskId, snapshot.tasks]
   );
+
   const renderedLogs = useMemo(() => {
     if (!activeTask) {
       return [];
@@ -241,6 +245,39 @@ export default function App(): JSX.Element {
     return map;
   }, [snapshot.tasks]);
 
+  const taskStats = useMemo(() => {
+    const stats = {
+      running: 0,
+      pending: 0,
+      awaitingCommit: 0,
+      completed: 0
+    };
+    snapshot.tasks.forEach((task) => {
+      switch (task.status) {
+        case 'running':
+          stats.running += 1;
+          break;
+        case 'pending':
+          stats.pending += 1;
+          break;
+        case 'awaiting_commit':
+          stats.awaitingCommit += 1;
+          break;
+        case 'completed':
+          stats.completed += 1;
+          break;
+        default:
+          break;
+      }
+    });
+    return stats;
+  }, [snapshot.tasks]);
+
+  const openIssueCount = useMemo(
+    () => snapshot.issues.filter((issue) => issue.state === 'open').length,
+    [snapshot.issues]
+  );
+
   async function handleLogin(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!token.trim()) {
@@ -264,24 +301,29 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleRepoChange(fullName: string): Promise<void> {
+  async function handleRepoChange(fullName: string): Promise<boolean> {
+    if (!fullName) {
+      return false;
+    }
     setRefreshing(true);
     setError(undefined);
     try {
       await selectRepo(fullName);
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : '切换仓库失败';
       setError(message);
+      return false;
     } finally {
       setRefreshing(false);
     }
   }
 
-  async function handleRepoJump(): Promise<void> {
+  async function handleRepoJump(): Promise<boolean> {
     const target = parseRepoTarget(repoJump);
     if (!target) {
       setError('请输入 owner/repo 或 GitHub Issue URL');
-      return;
+      return false;
     }
 
     setRefreshing(true);
@@ -292,11 +334,25 @@ export default function App(): JSX.Element {
         await loadIssueDetail(target.issueNumber);
       }
       setRepoJump('');
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : '跳转失败';
       setError(message);
+      return false;
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  function handleOpenRepoSwitcher(): void {
+    setRepoCandidate(snapshot.selectedRepo?.fullName ?? '');
+    setRepoSwitcherOpen(true);
+  }
+
+  async function handleConfirmRepoSwitch(): Promise<void> {
+    const changed = await handleRepoChange(repoCandidate);
+    if (changed) {
+      setRepoSwitcherOpen(false);
     }
   }
 
@@ -385,7 +441,7 @@ export default function App(): JSX.Element {
   }
 
   if (!initialized) {
-    return <div className="loading-screen">正在初始化 BuildBot Desktop MVP...</div>;
+    return <div className="loading-screen">正在初始化 BuildBot Desktop...</div>;
   }
 
   if (!snapshot.account) {
@@ -395,13 +451,13 @@ export default function App(): JSX.Element {
           <div className="brand-lockup login-brand">
             <AppLogo />
             <div>
-              <p className="eyebrow">BUILDBOT DESKTOP · MVP</p>
-              <h1>Issue to PR in Minutes</h1>
+              <p className="eyebrow">BUILDBOT DESKTOP</p>
+              <h1>Issue to PR</h1>
             </div>
           </div>
-          <p>
-            MVP 登录方式：GitHub Personal Access Token
-            （建议权限：`repo`、`workflow`）。Token 会写入系统 Keychain。
+          <p className="login-copy">
+            使用 GitHub Personal Access Token 登录（建议权限：`repo` + `workflow`）。
+            Token 会写入系统 Keychain。
           </p>
           <form onSubmit={handleLogin} className="login-form">
             <input
@@ -422,86 +478,167 @@ export default function App(): JSX.Element {
 
   return (
     <div className={`shell${IS_MAC ? ' is-mac' : ''}`}>
+      <div className="window-drag-strip" aria-hidden="true" />
+
       <header className="topbar">
-        <div className="brand">
-          <div className="brand-lockup">
-            <AppLogo compact />
-            <div>
-              <p className="eyebrow">BuildBot Desktop MVP</p>
-              <h2>{snapshot.account.login}</h2>
+        <div className="topbar-main">
+          <div className="brand">
+            <div className="brand-lockup">
+              <AppLogo compact />
+              <div>
+                <p className="eyebrow">BuildBot Desktop</p>
+                <h2>{snapshot.account.login}</h2>
+              </div>
             </div>
+            <p className="topbar-subtle">当前仓库：{snapshot.selectedRepo?.fullName ?? '未选择'}</p>
+          </div>
+
+          <div className="header-actions">
+            <button
+              className="ghost icon-btn"
+              onClick={handleOpenRepoSwitcher}
+              title="切换仓库"
+              aria-label="切换仓库"
+            >
+              <FolderOpen aria-hidden="true" />
+            </button>
           </div>
         </div>
 
-        <div className="toolbar">
-          <select
-            value={snapshot.selectedRepo?.fullName ?? ''}
-            onChange={(event) => void handleRepoChange(event.target.value)}
-          >
-            {snapshot.repos.map((repo) => (
-              <option key={repo.id} value={repo.fullName}>
-                {repo.fullName}
-              </option>
-            ))}
-          </select>
-
-          <input
-            value={repoJump}
-            onChange={(event) => setRepoJump(event.target.value)}
-            placeholder="owner/repo 或 Issue URL"
-          />
-          <button className="ghost" disabled={loading || refreshing} onClick={() => void handleRepoJump()}>
-            跳转
-          </button>
-
-          <select
-            value={filter.state}
-            onChange={(event) => setFilter({ state: event.target.value as 'open' | 'closed' | 'all' })}
-          >
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-            <option value="all">All</option>
-          </select>
-
-          <select
-            value={filter.assignee}
-            onChange={(event) => setFilter({ assignee: event.target.value as 'me' | 'all' })}
-          >
-            <option value="all">全部分配</option>
-            <option value="me">分配给我</option>
-          </select>
-
-          <input
-            value={filter.keyword}
-            onChange={(event) => setFilter({ keyword: event.target.value })}
-            placeholder="搜索 Issue 标题"
-          />
-
-          <select
-            value={filter.labels[0] ?? ''}
-            onChange={(event) =>
-              setFilter({ labels: event.target.value ? [event.target.value] : [] })
-            }
-          >
-            <option value="">全部标签</option>
-            {labelOptions.map((label) => (
-              <option value={label} key={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-
-          <button disabled={loading || refreshing} onClick={() => void handleFilterRefresh()}>
-            {refreshing ? '刷新中...' : '刷新 Issue'}
-          </button>
-          <button className="ghost" onClick={() => void handleOpenSettings()}>
-            设置
-          </button>
-          <button className="ghost" onClick={() => void logout()}>
-            退出
-          </button>
+        <div className="topbar-stats">
+          <div className="stat-card">
+            <span>Issues</span>
+            <strong>{snapshot.issues.length}</strong>
+            <small>{openIssueCount} Open</small>
+          </div>
+          <div className="stat-card">
+            <span>运行中</span>
+            <strong>{taskStats.running}</strong>
+            <small>{taskStats.pending} 等待中</small>
+          </div>
+          <div className="stat-card">
+            <span>待提交</span>
+            <strong>{taskStats.awaitingCommit}</strong>
+            <small>待人工确认</small>
+          </div>
+          <div className="stat-card">
+            <span>已完成</span>
+            <strong>{taskStats.completed}</strong>
+            <small>总任务 {snapshot.tasks.length}</small>
+          </div>
         </div>
       </header>
+
+      <button
+        className="icon-btn icon-plain global-settings-btn"
+        onClick={() => void handleOpenSettings()}
+        title="设置"
+        aria-label="设置"
+      >
+        <Settings aria-hidden="true" />
+      </button>
+
+      <section className="control-dock">
+        <div className="control-group control-group-filter">
+          <label className="control-label">Issue 筛选</label>
+          <div className="control-row filter-row">
+            <select
+              value={filter.state}
+              onChange={(event) => setFilter({ state: event.target.value as 'open' | 'closed' | 'all' })}
+            >
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="all">All</option>
+            </select>
+
+            <select
+              value={filter.assignee}
+              onChange={(event) => setFilter({ assignee: event.target.value as 'me' | 'all' })}
+            >
+              <option value="all">全部分配</option>
+              <option value="me">分配给我</option>
+            </select>
+
+            <input
+              value={filter.keyword}
+              onChange={(event) => setFilter({ keyword: event.target.value })}
+              placeholder="搜索标题"
+            />
+
+            <select
+              value={filter.labels[0] ?? ''}
+              onChange={(event) =>
+                setFilter({ labels: event.target.value ? [event.target.value] : [] })
+              }
+            >
+              <option value="">全部标签</option>
+              {labelOptions.map((label) => (
+                <option value={label} key={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+
+            <button disabled={loading || refreshing} onClick={() => void handleFilterRefresh()}>
+              {refreshing ? '刷新中...' : '刷新'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {repoSwitcherOpen ? (
+        <div className="repo-modal-mask" onClick={() => setRepoSwitcherOpen(false)}>
+          <div className="repo-modal" onClick={(event) => event.stopPropagation()}>
+            <h3>切换仓库</h3>
+            <p className="muted">选择仓库，或输入 owner/repo 与 Issue URL 快速跳转</p>
+            <select
+              value={repoCandidate}
+              onChange={(event) => setRepoCandidate(event.target.value)}
+            >
+              {snapshot.repos.length === 0 ? <option value="">暂无仓库</option> : null}
+              {snapshot.repos.map((repo) => (
+                <option key={repo.id} value={repo.fullName}>
+                  {repo.fullName}
+                </option>
+              ))}
+            </select>
+
+            <div className="repo-modal-actions">
+              <button
+                disabled={loading || refreshing || !repoCandidate}
+                onClick={() => void handleConfirmRepoSwitch()}
+              >
+                切换
+              </button>
+              <button className="ghost" onClick={() => setRepoSwitcherOpen(false)}>
+                关闭
+              </button>
+            </div>
+
+            <form
+              className="repo-jump-form modal-repo-jump"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void (async () => {
+                  const changed = await handleRepoJump();
+                  if (changed) {
+                    setRepoSwitcherOpen(false);
+                  }
+                })();
+              }}
+            >
+              <input
+                value={repoJump}
+                onChange={(event) => setRepoJump(event.target.value)}
+                placeholder="owner/repo 或 Issue URL"
+              />
+              <button className="ghost" type="submit" disabled={loading || refreshing}>
+                跳转
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {settingsOpen ? (
         <div className="settings-modal-mask" onClick={() => setSettingsOpen(false)}>
@@ -522,6 +659,9 @@ export default function App(): JSX.Element {
               <button className="ghost" disabled={savingSettings} onClick={() => void handleClearAnthropicKey()}>
                 清除
               </button>
+              <button className="ghost settings-logout" onClick={() => void logout()}>
+                退出登录
+              </button>
               <button className="ghost" onClick={() => setSettingsOpen(false)}>
                 关闭
               </button>
@@ -534,7 +674,10 @@ export default function App(): JSX.Element {
 
       <main className="workspace">
         <aside className="issue-list panel">
-          <div className="panel-title">Issues ({snapshot.issues.length})</div>
+          <div className="panel-head">
+            <h3>Issue 列表</h3>
+            <span className="panel-count">{snapshot.issues.length}</span>
+          </div>
           <div className="list-scroll">
             {snapshot.issues.map((issue) => {
               const task = issueTaskMap.get(issue.number);
@@ -556,7 +699,9 @@ export default function App(): JSX.Element {
                       </span>
                     ))}
                   </div>
-                  <small>{formatTime(issue.updatedAt)}</small>
+                  <small>
+                    @{issue.author} · {formatTime(issue.updatedAt)}
+                  </small>
                 </button>
               );
             })}
@@ -572,6 +717,9 @@ export default function App(): JSX.Element {
                   <h3>
                     #{selectedIssue.number} {selectedIssue.title}
                   </h3>
+                  <p className="muted detail-meta">
+                    @{selectedIssue.author} · 更新时间 {formatTime(selectedIssue.updatedAt)}
+                  </p>
                 </div>
                 <div className="detail-actions">
                   <button onClick={() => void launchTask('bugfix')}>AI 修复</button>
@@ -611,7 +759,10 @@ export default function App(): JSX.Element {
         </section>
 
         <aside className="task-panel panel">
-          <div className="panel-title">任务队列 ({snapshot.tasks.length})</div>
+          <div className="panel-head">
+            <h3>任务队列</h3>
+            <span className="panel-count">{snapshot.tasks.length}</span>
+          </div>
           <div className="task-scroll">
             {snapshot.tasks.map((task) => (
               <button
@@ -624,7 +775,7 @@ export default function App(): JSX.Element {
                 </p>
                 <div>
                   <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
-                  <small>{formatTime(task.startedAt ?? Date.now())}</small>
+                  <small>{formatTime(task.startedAt)}</small>
                 </div>
                 {task.result?.error ? (
                   <small className="task-error-hint" title={task.result.error}>
