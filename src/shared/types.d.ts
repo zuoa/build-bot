@@ -49,7 +49,7 @@ export interface AutoModeSettings {
     enabled: boolean;
     pollIntervalSec: number;
 }
-export type TaskStatus = 'pending' | 'running' | 'awaiting_commit' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export interface TaskLog {
     at: number;
     level: 'info' | 'success' | 'error' | 'thinking';
@@ -85,10 +85,6 @@ export interface EnqueueTaskInput {
     issueNumber: number;
     taskType: TaskType;
     customGuidelines?: string;
-}
-export interface ConfirmCommitInput {
-    taskId: string;
-    selectedFiles: string[];
 }
 export interface AppStateSnapshot {
     account?: AuthSession;

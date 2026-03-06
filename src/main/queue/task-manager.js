@@ -4,6 +4,28 @@ import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles
 import { createBranchForIssue, createPullRequest, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
 import { resolveAnthropicApiKey } from '../settings/service';
 import { mainState } from '../state';
+const LOG_DUPLICATE_WINDOW_MS = 15_000;
+const LOG_STREAM_UPDATE_WINDOW_MS = 15_000;
+function normalizeLogText(text) {
+    return text.replace(/\s+/g, ' ').trim();
+}
+function shouldReplaceStreamingLog(previous, next, now) {
+    if (now - previous.at > LOG_STREAM_UPDATE_WINDOW_MS) {
+        return false;
+    }
+    if (previous.level !== next.level) {
+        return false;
+    }
+    const previousText = normalizeLogText(previous.text);
+    const nextText = normalizeLogText(next.text);
+    if (!previousText || !nextText || previousText === nextText) {
+        return false;
+    }
+    if (/\n/.test(previousText) || /\n/.test(nextText)) {
+        return false;
+    }
+    return previousText.includes(nextText) || nextText.includes(previousText);
+}
 export class TaskManager {
     onTaskUpdate;
     queue = [];
@@ -32,20 +54,14 @@ export class TaskManager {
         this.kick();
         return task;
     }
-    async confirmCommit(input) {
-        const task = mainState.getTask(input.taskId);
+    async commitTaskChanges(taskId, selectedFiles) {
+        const task = mainState.getTask(taskId);
         if (!task) {
             throw new Error('任务不存在');
-        }
-        if (task.status !== 'awaiting_commit') {
-            throw new Error('当前任务不在待提交状态');
         }
         if (!task.workspacePath || !task.branchName) {
             throw new Error('任务缺少工作目录或分支信息');
         }
-        const selectedFiles = task.changedFiles
-            .filter((file) => input.selectedFiles.includes(file.path))
-            .map((file) => file.path);
         mainState.patchTask(task.id, { status: 'running' });
         this.emitTask(task.id);
         this.appendLog(task.id, {
@@ -83,8 +99,8 @@ export class TaskManager {
             level: 'success',
             text: pr.existed ? `检测到已有 PR: #${pr.number}` : `PR 创建成功: #${pr.number}`
         });
-        await cleanupWorkspace(task.workspacePath);
         this.emitTask(next.id);
+        await this.cleanupTaskWorkspace(task.id, task.workspacePath);
         return mainState.getTask(task.id);
     }
     async cancelTask(taskId) {
@@ -129,6 +145,18 @@ export class TaskManager {
             this.onTaskUpdate(task);
         }
     }
+    async cleanupTaskWorkspace(taskId, workspacePath) {
+        try {
+            await cleanupWorkspace(workspacePath);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.appendLog(taskId, {
+                level: 'error',
+                text: `工作目录清理失败：${message}`
+            });
+        }
+    }
     appendLog(taskId, log) {
         const task = mainState.getTask(taskId);
         if (!task) {
@@ -136,7 +164,23 @@ export class TaskManager {
         }
         const now = Date.now();
         const last = task.logs[task.logs.length - 1];
-        if (last && last.level === log.level && last.text === log.text && now - last.at < 3000) {
+        if (last &&
+            last.level === log.level &&
+            normalizeLogText(last.text) === normalizeLogText(log.text) &&
+            now - last.at < LOG_DUPLICATE_WINDOW_MS) {
+            return;
+        }
+        if (last && shouldReplaceStreamingLog(last, log, now)) {
+            const merged = {
+                ...last,
+                at: now,
+                text: normalizeLogText(log.text).length >= normalizeLogText(last.text).length
+                    ? log.text
+                    : last.text
+            };
+            const logs = [...task.logs.slice(0, -1), merged].slice(-800);
+            mainState.patchTask(taskId, { logs });
+            this.emitTask(taskId);
             return;
         }
         if (process.env.BUILDBOT_DEBUG_TASK_LOGS === '1') {
@@ -193,7 +237,7 @@ export class TaskManager {
                     level: 'error',
                     text: 'AI 未生成代码变更，请查看执行日志'
                 });
-                await cleanupWorkspace(workspacePath);
+                await this.cleanupTaskWorkspace(taskId, workspacePath);
                 this.onTaskUpdate(failed);
                 return;
             }
@@ -201,15 +245,14 @@ export class TaskManager {
                 path: file,
                 selected: true
             }));
-            const awaiting = mainState.patchTask(taskId, {
-                status: 'awaiting_commit',
+            mainState.patchTask(taskId, {
                 changedFiles: files
             });
             this.appendLog(taskId, {
-                level: 'success',
-                text: `检测到 ${changedFiles.length} 个变更文件，等待确认提交`
+                level: 'info',
+                text: `检测到 ${changedFiles.length} 个变更文件，开始自动提交并创建 PR`
             });
-            this.onTaskUpdate(awaiting);
+            await this.commitTaskChanges(taskId, changedFiles);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : '任务执行失败，请查看日志和配置';
@@ -220,7 +263,7 @@ export class TaskManager {
                     result: { error: message }
                 });
                 this.appendLog(taskId, { level: 'error', text: '任务已取消' });
-                await cleanupWorkspace(mainState.getTask(taskId)?.workspacePath);
+                await this.cleanupTaskWorkspace(taskId, mainState.getTask(taskId)?.workspacePath);
                 this.onTaskUpdate(cancelled);
             }
             else {
@@ -230,7 +273,7 @@ export class TaskManager {
                     result: { error: message }
                 });
                 this.appendLog(taskId, { level: 'error', text: message });
-                await cleanupWorkspace(mainState.getTask(taskId)?.workspacePath);
+                await this.cleanupTaskWorkspace(taskId, mainState.getTask(taskId)?.workspacePath);
                 this.onTaskUpdate(failed);
             }
         }

@@ -43,9 +43,6 @@ const desktopApi = {
     enqueueTask(input) {
         return ipcRenderer.invoke(IPC_CHANNELS.ENQUEUE_TASK, input);
     },
-    confirmTaskCommit(input) {
-        return ipcRenderer.invoke(IPC_CHANNELS.CONFIRM_TASK_COMMIT, input);
-    },
     cancelTask(taskId) {
         return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TASK, taskId);
     },

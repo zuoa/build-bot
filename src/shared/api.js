@@ -11,7 +11,6 @@ export const IPC_CHANNELS = {
     LIST_ISSUES: 'github:list-issues',
     GET_ISSUE_DETAIL: 'github:get-issue-detail',
     ENQUEUE_TASK: 'task:enqueue',
-    CONFIRM_TASK_COMMIT: 'task:confirm-commit',
     CANCEL_TASK: 'task:cancel',
     TASK_UPDATED: 'event:task-updated'
 };

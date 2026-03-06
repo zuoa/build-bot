@@ -107,9 +107,6 @@ export function registerIpcHandlers(mainWindow) {
         mainState.setSelectedIssue(issue);
         return taskManager.enqueue(input, issue.title);
     });
-    ipcMain.handle(IPC_CHANNELS.CONFIRM_TASK_COMMIT, async (_, input) => {
-        return taskManager.confirmCommit(input);
-    });
     ipcMain.handle(IPC_CHANNELS.CANCEL_TASK, async (_, taskId) => {
         await taskManager.cancelTask(taskId);
     });
