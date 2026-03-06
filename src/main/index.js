@@ -6,6 +6,7 @@ import { bootstrapAuthFromKeychain, registerIpcHandlers } from './ipc/register';
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const APP_BG_COLOR = '#ECE7DE';
 const APP_TITLE_SYMBOL_COLOR = '#1A2027';
+const SHOULD_OPEN_DEVTOOLS = process.env.BUILDBOT_OPEN_DEVTOOLS === '1';
 function resolvePreloadPath() {
     const mjsPath = path.join(currentDir, 'preload.mjs');
     if (existsSync(mjsPath)) {
@@ -69,7 +70,9 @@ async function createMainWindow() {
     if (devServerUrl) {
         try {
             await window.loadURL(devServerUrl);
-            window.webContents.openDevTools({ mode: 'detach' });
+            if (SHOULD_OPEN_DEVTOOLS) {
+                window.webContents.openDevTools({ mode: 'detach' });
+            }
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
