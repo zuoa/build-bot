@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { buildLogDedupKey, normalizeVisibleLogText } from '../../shared/log-dedupe';
 import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import { addLabelToIssue, buildBranchUrl, createIssueComment, createBranchForIssue, createPullRequest, ensureDirectBranch, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
@@ -8,7 +9,26 @@ import { mainState } from '../state';
 const LOG_DUPLICATE_WINDOW_MS = 15_000;
 const LOG_STREAM_UPDATE_WINDOW_MS = 15_000;
 function normalizeLogText(text) {
-    return text.replace(/\s+/g, ' ').trim();
+    return normalizeVisibleLogText(text);
+}
+function shouldSkipDuplicateLog(taskLogs, next, now) {
+    const nextKey = buildLogDedupKey(next.text);
+    if (!nextKey) {
+        return false;
+    }
+    for (let index = taskLogs.length - 1; index >= 0; index -= 1) {
+        const candidate = taskLogs[index];
+        if (now - candidate.at > LOG_DUPLICATE_WINDOW_MS) {
+            break;
+        }
+        if (candidate.level !== next.level) {
+            continue;
+        }
+        if (buildLogDedupKey(candidate.text) === nextKey) {
+            return true;
+        }
+    }
+    return false;
 }
 function shouldReplaceStreamingLog(previous, next, now) {
     if (now - previous.at > LOG_STREAM_UPDATE_WINDOW_MS) {
@@ -347,10 +367,7 @@ export class TaskManager {
         }
         const now = Date.now();
         const last = task.logs[task.logs.length - 1];
-        if (last &&
-            last.level === log.level &&
-            normalizeLogText(last.text) === normalizeLogText(log.text) &&
-            now - last.at < LOG_DUPLICATE_WINDOW_MS) {
+        if (shouldSkipDuplicateLog(task.logs, log, now)) {
             return;
         }
         if (last && shouldReplaceStreamingLog(last, log, now)) {

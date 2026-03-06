@@ -12,10 +12,12 @@ declare class MainState {
     setSelectedRepo(repo?: RepoSummary): void;
     setIssues(issues: IssueSummary[]): void;
     setSelectedIssue(issue?: IssueDetail): void;
+    setTasks(tasks: TaskEntity[]): void;
     upsertTask(nextTask: TaskEntity): TaskEntity;
     patchTask(taskId: string, patch: Partial<TaskEntity>): TaskEntity;
     getTask(taskId: string): TaskEntity | undefined;
     clearOnLogout(): void;
+    private persistTasks;
 }
 export declare const mainState: MainState;
 export {};

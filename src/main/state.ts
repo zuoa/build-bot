@@ -6,6 +6,7 @@ import type {
   RepoSummary,
   TaskEntity
 } from '../shared/types';
+import { scheduleTaskHistoryPersist } from './task-history/store';
 
 class MainState {
   private account?: AuthSession;
@@ -46,15 +47,22 @@ class MainState {
     this.selectedIssue = issue;
   }
 
+  setTasks(tasks: TaskEntity[]): void {
+    this.tasks = [...tasks];
+    this.persistTasks();
+  }
+
   upsertTask(nextTask: TaskEntity): TaskEntity {
     const index = this.tasks.findIndex((task) => task.id === nextTask.id);
     if (index === -1) {
       this.tasks = [nextTask, ...this.tasks];
+      this.persistTasks();
       return nextTask;
     }
     const cloned = [...this.tasks];
     cloned[index] = nextTask;
     this.tasks = cloned;
+    this.persistTasks();
     return nextTask;
   }
 
@@ -76,7 +84,10 @@ class MainState {
     this.selectedRepo = undefined;
     this.issues = [];
     this.selectedIssue = undefined;
-    this.tasks = [];
+  }
+
+  private persistTasks(): void {
+    scheduleTaskHistoryPersist(this.tasks);
   }
 }
 

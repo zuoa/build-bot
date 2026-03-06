@@ -23,6 +23,7 @@ import type {
   SubmissionMode,
   TaskEntity
 } from '../shared/types';
+import { buildLogDedupKey, normalizeVisibleLogText } from '../shared/log-dedupe';
 import AppLogo from './components/AppLogo';
 import { useAppStore } from './store/useAppStore';
 import { mergeLogs, formatLogsForCopy, logLevelLabel } from './utils/logUtils';
@@ -73,6 +74,16 @@ function formatDuration(seconds: number): string {
     return `${m}m ${s}s`;
   }
   return `${s}s`;
+}
+
+function formatTaskListTime(task: TaskEntity): string {
+  if (task.finishedAt) {
+    return `完成于 ${formatTime(task.finishedAt)}`;
+  }
+  if (task.startedAt) {
+    return `开始于 ${formatTime(task.startedAt)}`;
+  }
+  return '尚未开始';
 }
 
 function statusLabel(status: TaskEntity['status']): string {
@@ -302,7 +313,50 @@ export default function App(): JSX.Element {
     if (!activeTask) {
       return [];
     }
-    return mergeLogs(activeTask.logs).slice(-500);
+    const merged: Array<{
+      at: number;
+      level: TaskEntity['logs'][number]['level'];
+      text: string;
+      dedupKey: string;
+    }> = [];
+    activeTask.logs.forEach((log) => {
+      const text = normalizeVisibleLogText(log.text);
+      if (!text) {
+        return;
+      }
+      const dedupKey = buildLogDedupKey(text);
+      const prev = merged[merged.length - 1];
+      const isNearDuplicate =
+        prev &&
+        prev.level === log.level &&
+        dedupKey.length > 0 &&
+        prev.dedupKey === dedupKey &&
+        log.at - prev.at <= 20_000;
+      if (isNearDuplicate) {
+        prev.at = log.at;
+        return;
+      }
+      const canMerge =
+        prev &&
+        prev.level === log.level &&
+        log.at - prev.at <= 1200 &&
+        prev.text.length < 240 &&
+        text.length < 180 &&
+        !/\n/.test(prev.text) &&
+        !/\n/.test(text);
+      if (canMerge) {
+        prev.text = `${prev.text} ${text}`.replace(/\s+/g, ' ').trim();
+        prev.at = log.at;
+        prev.dedupKey = buildLogDedupKey(prev.text);
+        return;
+      }
+      merged.push({ at: log.at, level: log.level, text, dedupKey });
+    });
+    return merged.slice(-500).map((log) => ({
+      at: log.at,
+      level: log.level,
+      text: log.text
+    }));
   }, [activeTask]);
 
   useEffect(() => {
@@ -1213,7 +1267,7 @@ export default function App(): JSX.Element {
                           </p>
                           <div>
                             <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
-                            <small>{formatTime(task.startedAt)}</small>
+                            <small>{formatTaskListTime(task)}</small>
                           </div>
                           {task.result?.error ? (
                             <small className="task-error-hint" title={task.result.error}>

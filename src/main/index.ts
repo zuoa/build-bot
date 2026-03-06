@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bootstrapAuthFromKeychain, registerIpcHandlers } from './ipc/register';
+import { loadTaskHistory, flushTaskHistorySync } from './task-history/store';
+import { mainState } from './state';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const APP_BG_COLOR = '#ECE7DE';
@@ -97,6 +99,7 @@ app
   .whenReady()
   .then(async () => {
     await bootstrapAuthFromKeychain();
+    mainState.setTasks(await loadTaskHistory());
     await createMainWindow();
 
     app.on('activate', async () => {
@@ -110,6 +113,10 @@ app
     console.error('[BuildBot] app bootstrap failed:', message);
     app.quit();
   });
+
+app.on('before-quit', () => {
+  flushTaskHistorySync();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
