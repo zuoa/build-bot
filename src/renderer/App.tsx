@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock3,
+  Copy,
   FolderOpen,
   GitBranch,
   GitPullRequest,
@@ -24,6 +25,7 @@ import type {
 } from '../shared/types';
 import AppLogo from './components/AppLogo';
 import { useAppStore } from './store/useAppStore';
+import { mergeLogs, formatLogsForCopy, logLevelLabel } from './utils/logUtils';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -105,19 +107,6 @@ function statusClass(status: TaskEntity['status']): string {
       return 'status status-run';
     default:
       return 'status status-pending';
-  }
-}
-
-function logLevelLabel(level: TaskEntity['logs'][number]['level']): string {
-  switch (level) {
-    case 'thinking':
-      return '思考';
-    case 'success':
-      return '完成';
-    case 'error':
-      return '错误';
-    default:
-      return '日志';
   }
 }
 
@@ -209,6 +198,7 @@ export default function App(): JSX.Element {
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('agent');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
   const [timerNow, setTimerNow] = useState<number>(Date.now());
+  const [copied, setCopied] = useState(false);
   const logBoxRef = useRef<HTMLDivElement | null>(null);
   const agentSettingsSaveTimerRef = useRef<number>();
   const latestAgentSettingsSignatureRef = useRef('');
@@ -312,29 +302,7 @@ export default function App(): JSX.Element {
     if (!activeTask) {
       return [];
     }
-    const merged: Array<{ at: number; level: TaskEntity['logs'][number]['level']; text: string }> = [];
-    activeTask.logs.forEach((log) => {
-      const text = log.text.trim();
-      if (!text) {
-        return;
-      }
-      const prev = merged[merged.length - 1];
-      const canMerge =
-        prev &&
-        prev.level === log.level &&
-        log.at - prev.at <= 1200 &&
-        prev.text.length < 240 &&
-        text.length < 180 &&
-        !/\n/.test(prev.text) &&
-        !/\n/.test(text);
-      if (canMerge) {
-        prev.text = `${prev.text} ${text}`.replace(/\s+/g, ' ').trim();
-        prev.at = log.at;
-        return;
-      }
-      merged.push({ at: log.at, level: log.level, text });
-    });
-    return merged.slice(-500);
+    return mergeLogs(activeTask.logs).slice(-500);
   }, [activeTask]);
 
   useEffect(() => {
@@ -344,6 +312,17 @@ export default function App(): JSX.Element {
     }
     box.scrollTop = box.scrollHeight;
   }, [activeTask?.id, renderedLogs.length]);
+
+  function copyAllLogs(): void {
+    if (!activeTask || activeTask.logs.length === 0) return;
+    // 基于原始日志生成完整的复制文本（不裁剪）
+    const merged = mergeLogs(activeTask.logs);
+    const copyText = formatLogsForCopy(merged);
+    navigator.clipboard.writeText(copyText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   const labelOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1410,15 +1389,28 @@ export default function App(): JSX.Element {
                         {renderedLogs.length === 0 ? (
                           <p className="log-empty">等待日志输出...</p>
                         ) : (
-                          renderedLogs.map((log) => (
-                            <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
-                              <span className={`log-badge log-badge-${log.level}`}>{logLevelLabel(log.level)}</span>
-                              <div className="log-main">
-                                <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
-                                <p className={`log-text log-${log.level}`}>{log.text}</p>
-                              </div>
-                            </div>
-                          ))
+                          <>
+                            <button
+                              className="log-copy-btn icon-plain"
+                              type="button"
+                              onClick={copyAllLogs}
+                              title="复制全部日志"
+                            >
+                              {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                            </button>
+                            {renderedLogs.map((log) => {
+                              const label = logLevelLabel(log.level);
+                              return (
+                                <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
+                                  {label && <span className={`log-badge log-badge-${log.level}`}>{label}</span>}
+                                  <div className="log-main">
+                                    <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
+                                    <p className={`log-text log-${log.level}`}>{log.text}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </>
                         )}
                       </div>
                     </div>
