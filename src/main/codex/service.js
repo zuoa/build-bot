@@ -63,26 +63,45 @@ function parseJsonLine(line) {
     try {
         const parsed = JSON.parse(line);
         const type = typeof parsed.type === 'string' ? parsed.type : '';
+        if (type === 'thread.started') {
+            return { level: 'thinking', text: 'Codex 会话已创建，等待任务开始...' };
+        }
         if (type === 'error' && typeof parsed.message === 'string') {
             return { level: 'error', text: parsed.message };
+        }
+        if (type === 'item.started') {
+            const item = parsed.item;
+            const itemType = typeof item?.type === 'string' ? item.type : 'unknown';
+            return { level: 'thinking', text: `Codex 开始处理步骤：${itemType}` };
         }
         if (type === 'item.completed' && parsed.item && typeof parsed.item === 'object') {
             const item = parsed.item;
             if (typeof item.message === 'string') {
                 return { level: item.type === 'error' ? 'error' : 'info', text: item.message };
             }
+            if (typeof item.type === 'string') {
+                return { level: item.type === 'error' ? 'error' : 'thinking', text: `Codex 完成步骤：${item.type}` };
+            }
         }
         if (type === 'agent_message_delta' && typeof parsed.delta === 'string') {
             return { level: 'info', text: parsed.delta };
         }
+        if (type === 'agent_message' && typeof parsed.message === 'string') {
+            return { level: 'info', text: parsed.message };
+        }
         if (type === 'turn.started') {
             return { level: 'thinking', text: 'Codex 开始处理当前请求' };
         }
+        if (type === 'turn.completed') {
+            return { level: 'success', text: 'Codex 当前回合已完成' };
+        }
+        if (type) {
+            return { level: 'thinking', text: `Codex 事件：${type}` };
+        }
     }
     catch {
-        return undefined;
+        return { level: 'info', text: line };
     }
-    return undefined;
 }
 async function ensureOutputDir() {
     const dir = path.join(os.tmpdir(), 'buildbot-codex-output');
@@ -165,6 +184,10 @@ export async function runCodexTask(params) {
         let settled = false;
         let hasOutput = false;
         let lastOutputAt = Date.now();
+        params.onLog({
+            level: 'thinking',
+            text: `Codex 进程已启动（${params.readOnly ? '只读审查' : '可写执行'}），等待输出...`
+        });
         const clearAllTimers = () => {
             clearTimeout(timeoutTimer);
             clearTimeout(startupSilenceTimer);
