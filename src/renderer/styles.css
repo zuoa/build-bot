@@ -419,7 +419,7 @@ button.ghost:hover {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 392px;
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -581,36 +581,6 @@ button.ghost:hover {
   border-color: #fcd34d;
 }
 
-.issue-detail {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 10px;
-}
-
-.detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.detail-head h3 {
-  margin: 0;
-  font-size: clamp(20px, 2vw, 25px);
-  line-height: 1.22;
-  letter-spacing: -0.02em;
-}
-
-.detail-meta {
-  margin-top: 7px;
-}
-
-.detail-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .markdown {
   overflow: auto;
   border: 1px solid var(--line);
@@ -679,6 +649,14 @@ button.ghost:hover {
   display: grid;
   grid-template-rows: auto 200px 1fr;
   gap: 10px;
+}
+
+.task-panel-main {
+  grid-template-rows: auto minmax(120px, 0.35fr) minmax(200px, 1fr);
+}
+
+.task-detail-main {
+  grid-template-rows: auto auto auto 1fr;
 }
 
 .task-error-hint,
@@ -849,7 +827,8 @@ button.ghost:hover {
 }
 
 .repo-modal-mask,
-.settings-modal-mask {
+.settings-modal-mask,
+.issue-modal-mask {
   position: fixed;
   inset: 0;
   z-index: 60;
@@ -869,6 +848,55 @@ button.ghost:hover {
   box-shadow: var(--shadow-sm);
   display: grid;
   gap: 10px;
+}
+
+.issue-modal {
+  width: min(720px, 100%);
+  max-height: 85vh;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 14px;
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  grid-template-rows: auto auto minmax(100px, 1fr) auto;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.issue-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.issue-modal-head h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+}
+
+.issue-modal-head .icon-btn {
+  font-size: 24px;
+  line-height: 1;
+  padding: 0 8px;
+}
+
+.issue-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.issue-modal .markdown {
+  overflow: auto;
+  max-height: 320px;
+}
+
+.issue-modal .comment-block {
+  max-height: 180px;
 }
 
 .repo-modal h3,
@@ -946,7 +974,7 @@ button.ghost:hover {
 
 @media (max-width: 1460px) {
   .workspace {
-    grid-template-columns: 276px minmax(0, 1fr) 352px;
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 }
 
@@ -960,18 +988,11 @@ button.ghost:hover {
   }
 
   .workspace {
-    grid-template-columns: 280px minmax(0, 1fr);
-    grid-template-rows: 1fr 392px;
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 
-  .task-panel {
-    grid-column: 1 / -1;
-    grid-template-columns: 300px minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
-  }
-
-  .task-panel .panel-head {
-    grid-column: 1 / -1;
+  .task-panel-main {
+    grid-template-rows: auto 160px minmax(200px, 1fr);
   }
 }
 
@@ -1007,25 +1028,16 @@ button.ghost:hover {
 
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: 320px minmax(500px, 1fr) 500px;
+    grid-template-rows: 280px minmax(400px, 1fr);
   }
 
-  .task-panel {
-    grid-column: auto;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 180px minmax(300px, 1fr);
+  .task-panel-main {
+    grid-template-rows: auto 140px minmax(200px, 1fr);
   }
 
-  .detail-head {
-    flex-direction: column;
-  }
-
-  .detail-actions {
+  .issue-modal {
     width: 100%;
-  }
-
-  .detail-actions button {
-    flex: 1;
+    max-height: 90vh;
   }
 }
 

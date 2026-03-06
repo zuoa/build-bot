@@ -136,6 +136,7 @@ export default function App(): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [repoSwitcherOpen, setRepoSwitcherOpen] = useState(false);
+  const [issueDetailOpen, setIssueDetailOpen] = useState(false);
   const [repoCandidate, setRepoCandidate] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [hasAnthropicApiKey, setHasAnthropicApiKey] = useState(false);
@@ -776,7 +777,10 @@ export default function App(): JSX.Element {
                 <button
                   key={issue.id}
                   className={`issue-item ${selectedIssue?.number === issue.number ? 'active' : ''}`}
-                  onClick={() => void loadIssueDetail(issue.number)}
+                  onClick={() => {
+                    void loadIssueDetail(issue.number);
+                    setIssueDetailOpen(true);
+                  }}
                 >
                   <div className="issue-head">
                     <span>#{issue.number}</span>
@@ -799,57 +803,7 @@ export default function App(): JSX.Element {
           </div>
         </aside>
 
-        <section className="issue-detail panel">
-          {selectedIssue ? (
-            <>
-              <div className="detail-head">
-                <div>
-                  <p className="eyebrow">Issue Detail</p>
-                  <h3>
-                    #{selectedIssue.number} {selectedIssue.title}
-                  </h3>
-                  <p className="muted detail-meta">
-                    @{selectedIssue.author} · 更新时间 {formatTime(selectedIssue.updatedAt)}
-                  </p>
-                </div>
-                <div className="detail-actions">
-                  <button onClick={() => void launchTask('bugfix')}>AI 修复</button>
-                  <button className="ghost" onClick={() => void launchTask('feature')}>
-                    AI 开发
-                  </button>
-                </div>
-              </div>
-
-              <article
-                className="markdown"
-                dangerouslySetInnerHTML={{
-                  __html: markdownHtml(selectedIssue.body || '_Issue 正文为空_')
-                }}
-              />
-
-              <section className="comment-block">
-                <h4>评论（最多 10 条）</h4>
-                {selectedIssue.comments.length === 0 ? (
-                  <p className="muted">暂无评论</p>
-                ) : (
-                  selectedIssue.comments.map((comment) => (
-                    <div key={comment.id} className="comment-item">
-                      <div>
-                        <strong>{comment.author}</strong>
-                        <span>{formatTime(comment.createdAt)}</span>
-                      </div>
-                      <p>{comment.body}</p>
-                    </div>
-                  ))
-                )}
-              </section>
-            </>
-          ) : (
-            <div className="empty">从左侧选择一个 Issue 以查看详情</div>
-          )}
-        </section>
-
-        <aside className="task-panel panel">
+        <section className="task-panel panel task-panel-main">
           <div className="panel-head">
             <h3>任务队列</h3>
             <span className="panel-count">{snapshot.tasks.length}</span>
@@ -883,7 +837,7 @@ export default function App(): JSX.Element {
           </div>
 
           {activeTask ? (
-            <div className="task-detail">
+            <div className="task-detail task-detail-main">
               <div className="task-meta">
                 <h4>
                   #{activeTask.issueNumber} · {statusLabel(activeTask.status)}
@@ -942,8 +896,57 @@ export default function App(): JSX.Element {
           ) : (
             <div className="empty">暂无任务</div>
           )}
-        </aside>
+        </section>
       </main>
+
+      {issueDetailOpen && selectedIssue ? (
+        <div className="issue-modal-mask" onClick={() => setIssueDetailOpen(false)}>
+          <div className="issue-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="issue-modal-head">
+              <div>
+                <p className="eyebrow">Issue Detail</p>
+                <h3>
+                  #{selectedIssue.number} {selectedIssue.title}
+                </h3>
+                <p className="muted detail-meta">
+                  @{selectedIssue.author} · 更新时间 {formatTime(selectedIssue.updatedAt)}
+                </p>
+              </div>
+              <button className="ghost icon-btn" onClick={() => setIssueDetailOpen(false)} aria-label="关闭">
+                ×
+              </button>
+            </div>
+            <div className="issue-modal-actions">
+              <button onClick={() => { void launchTask('bugfix'); setIssueDetailOpen(false); }}>AI 修复</button>
+              <button className="ghost" onClick={() => { void launchTask('feature'); setIssueDetailOpen(false); }}>
+                AI 开发
+              </button>
+            </div>
+            <article
+              className="markdown"
+              dangerouslySetInnerHTML={{
+                __html: markdownHtml(selectedIssue.body || '_Issue 正文为空_')
+              }}
+            />
+            <section className="comment-block">
+              <h4>评论（最多 10 条）</h4>
+              {selectedIssue.comments.length === 0 ? (
+                <p className="muted">暂无评论</p>
+              ) : (
+                selectedIssue.comments.map((comment) => (
+                  <div key={comment.id} className="comment-item">
+                    <div>
+                      <strong>{comment.author}</strong>
+                      <span>{formatTime(comment.createdAt)}</span>
+                    </div>
+                    <p>{comment.body}</p>
+                  </div>
+                ))
+              )}
+            </section>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
