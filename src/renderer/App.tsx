@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { FolderOpen, Settings } from 'lucide-react';
+import {
+  Bot,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  FolderOpen,
+  GitBranch,
+  GitPullRequest,
+  LogOut,
+  Repeat,
+  Settings,
+  ShieldCheck,
+  User,
+  X
+} from 'lucide-react';
 import { marked } from 'marked';
 import type {
   AgentProvider,
@@ -15,24 +29,28 @@ marked.setOptions({ breaks: true, gfm: true });
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 type WorkspaceView = 'tasks' | 'issues';
+type SettingsTab = 'agent' | 'auto' | 'account';
 
 function agentProviderLabel(provider: AgentProvider): string {
   return provider === 'codex' ? 'Codex' : 'Claude';
 }
 
-function reviewStrictnessLabel(strictness: ReviewStrictness): string {
-  switch (strictness) {
-    case 'strict':
-      return '严格';
-    case 'lenient':
-      return '宽松';
-    default:
-      return '一般';
-  }
-}
-
-function submissionModeLabel(mode: SubmissionMode): string {
-  return mode === 'pr' ? 'PR 模式' : '分支模式';
+function agentSettingsSignature(settings: {
+  implementationProvider: AgentProvider;
+  reviewProvider: AgentProvider;
+  reviewStrictness: ReviewStrictness;
+  reviewMaxRounds: number;
+  submissionMode: SubmissionMode;
+  directBranchName: string;
+}): string {
+  return [
+    settings.implementationProvider,
+    settings.reviewProvider,
+    settings.reviewStrictness,
+    String(settings.reviewMaxRounds),
+    settings.submissionMode,
+    settings.directBranchName
+  ].join('::');
 }
 
 function formatTime(value?: number | string): string {
@@ -188,10 +206,13 @@ export default function App(): JSX.Element {
   const [autoModeCountdown, setAutoModeCountdown] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string>();
-  const [settingsTab, setSettingsTab] = useState<'agent' | 'auto' | 'account'>('agent');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('agent');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
   const [timerNow, setTimerNow] = useState<number>(Date.now());
   const logBoxRef = useRef<HTMLDivElement | null>(null);
+  const agentSettingsSaveTimerRef = useRef<number>();
+  const latestAgentSettingsSignatureRef = useRef('');
+  const lastSavedAgentSettingsRef = useRef('');
 
   useEffect(() => {
     attachTaskListener();
@@ -214,6 +235,7 @@ export default function App(): JSX.Element {
   async function refreshSettingsStatus(): Promise<void> {
     try {
       const settings = await window.desktopApi.getSettings();
+      lastSavedAgentSettingsRef.current = agentSettingsSignature(settings.agentSettings);
       setImplementationProvider(settings.agentSettings.implementationProvider);
       setReviewProvider(settings.agentSettings.reviewProvider);
       setReviewStrictness(settings.agentSettings.reviewStrictness);
@@ -392,6 +414,76 @@ export default function App(): JSX.Element {
     [providerStatuses]
   );
 
+  const settingsTabs = useMemo(
+    () => [
+      {
+        id: 'agent' as const,
+        label: 'Agent',
+        caption: '执行链路与审查门槛',
+        value: `${agentProviderLabel(implementationProvider)} / ${agentProviderLabel(reviewProvider)}`,
+        icon: Bot
+      },
+      {
+        id: 'auto' as const,
+        label: '自动模式',
+        caption: '轮询与自动入队',
+        value: autoModeEnabled ? `${autoModePollIntervalSec}s` : '已暂停',
+        icon: Repeat
+      },
+      {
+        id: 'account' as const,
+        label: '账户',
+        caption: '登录态与安全操作',
+        value: snapshot.account?.login ?? '未登录',
+        icon: User
+      }
+    ],
+    [
+      autoModeEnabled,
+      autoModePollIntervalSec,
+      implementationProvider,
+      reviewProvider,
+      snapshot.account?.login
+    ]
+  );
+
+  const activeSettingsTab = settingsTabs.find((item) => item.id === settingsTab) ?? settingsTabs[0];
+  const ActiveSettingsIcon = activeSettingsTab.icon;
+  const agentSettingsDraft = useMemo(
+    () => ({
+      implementationProvider,
+      reviewProvider,
+      reviewStrictness,
+      reviewMaxRounds: Number.isFinite(reviewMaxRounds) ? Math.round(reviewMaxRounds) : 3,
+      submissionMode,
+      directBranchName
+    }),
+    [
+      directBranchName,
+      implementationProvider,
+      reviewMaxRounds,
+      reviewProvider,
+      reviewStrictness,
+      submissionMode
+    ]
+  );
+  const agentSettingsDraftSignature = useMemo(
+    () => agentSettingsSignature(agentSettingsDraft),
+    [agentSettingsDraft]
+  );
+  latestAgentSettingsSignatureRef.current = agentSettingsDraftSignature;
+  const settingsMessageTone =
+    settingsMessage && (settingsMessage.includes('失败') || settingsMessage.includes('错误'))
+      ? 'is-error'
+      : 'is-success';
+  const readyProviderCount = visibleProviderStatuses.filter((status) => status.available).length;
+  const settingsPanelDescription =
+    settingsTab === 'agent'
+      ? '执行 Provider、审查强度和提交流程。'
+      : settingsTab === 'auto'
+        ? '自动轮询开关、频率和当前状态。'
+        : '当前账户和退出登录。';
+
   async function handleLogin(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!token.trim()) {
@@ -496,28 +588,30 @@ export default function App(): JSX.Element {
     await refreshSettingsStatus();
   }
 
-  async function handleSaveAgentSettings(): Promise<void> {
+  async function persistAgentSettings(
+    nextSettings: typeof agentSettingsDraft,
+    withSettingsMessage: boolean
+  ): Promise<void> {
+    const requestSignature = agentSettingsSignature(nextSettings);
     setSavingSettings(true);
-    setSettingsMessage(undefined);
+    if (withSettingsMessage) {
+      setSettingsMessage(undefined);
+    }
     try {
-      const saved = await window.desktopApi.saveAgentSettings({
-        implementationProvider,
-        reviewProvider,
-        reviewStrictness,
-        reviewMaxRounds: Number.isFinite(reviewMaxRounds) ? Math.round(reviewMaxRounds) : 3,
-        submissionMode,
-        directBranchName
-      });
-      setImplementationProvider(saved.implementationProvider);
-      setReviewProvider(saved.reviewProvider);
-      setReviewStrictness(saved.reviewStrictness);
-      setReviewMaxRounds(saved.reviewMaxRounds);
-      setSubmissionMode(saved.submissionMode);
-      setDirectBranchName(saved.directBranchName);
-      await refreshSettingsStatus();
-      setSettingsMessage(
-        `已保存 Agent 配置：实施 ${agentProviderLabel(saved.implementationProvider)} / Review ${agentProviderLabel(saved.reviewProvider)} / 审查${reviewStrictnessLabel(saved.reviewStrictness)} / ${saved.reviewMaxRounds}轮 / ${submissionModeLabel(saved.submissionMode)}${saved.submissionMode === 'branch' ? ` / 分支 ${saved.directBranchName}` : ''}`
-      );
+      const saved = await window.desktopApi.saveAgentSettings(nextSettings);
+      const savedSignature = agentSettingsSignature(saved);
+      lastSavedAgentSettingsRef.current = savedSignature;
+      if (latestAgentSettingsSignatureRef.current === requestSignature) {
+        setImplementationProvider(saved.implementationProvider);
+        setReviewProvider(saved.reviewProvider);
+        setReviewStrictness(saved.reviewStrictness);
+        setReviewMaxRounds(saved.reviewMaxRounds);
+        setSubmissionMode(saved.submissionMode);
+        setDirectBranchName(saved.directBranchName);
+      }
+      if (withSettingsMessage) {
+        setSettingsMessage('Agent 配置已自动保存');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Agent 配置保存失败';
       setSettingsMessage(message);
@@ -525,6 +619,21 @@ export default function App(): JSX.Element {
       setSavingSettings(false);
     }
   }
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      window.clearTimeout(agentSettingsSaveTimerRef.current);
+      return;
+    }
+    if (agentSettingsDraftSignature === lastSavedAgentSettingsRef.current) {
+      return;
+    }
+    window.clearTimeout(agentSettingsSaveTimerRef.current);
+    agentSettingsSaveTimerRef.current = window.setTimeout(() => {
+      void persistAgentSettings(agentSettingsDraft, true);
+    }, 300);
+    return () => window.clearTimeout(agentSettingsSaveTimerRef.current);
+  }, [agentSettingsDraft, agentSettingsDraftSignature, settingsOpen]);
 
   async function persistAutoModeSettings(
     enabled: boolean,
@@ -719,208 +828,351 @@ export default function App(): JSX.Element {
         <div className="settings-modal-mask" onClick={() => setSettingsOpen(false)}>
           <div className="settings-modal settings-modal-layout" onClick={(event) => event.stopPropagation()}>
             <aside className="settings-sidebar">
-              <h3>设置</h3>
+              <div className="settings-sidebar-head">
+                <h3>设置</h3>
+                <p className="muted">
+                  当前工作区配置
+                </p>
+              </div>
               <nav className="settings-nav">
-                <button
-                  className={`settings-nav-btn ${settingsTab === 'agent' ? 'is-active' : ''}`}
-                  onClick={() => setSettingsTab('agent')}
-                >
-                  Agent
-                </button>
-                <button
-                  className={`settings-nav-btn ${settingsTab === 'auto' ? 'is-active' : ''}`}
-                  onClick={() => setSettingsTab('auto')}
-                >
-                  自动模式
-                </button>
-                <button
-                  className={`settings-nav-btn ${settingsTab === 'account' ? 'is-active' : ''}`}
-                  onClick={() => setSettingsTab('account')}
-                >
-                  账户
-                </button>
+                {settingsTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      className={`settings-nav-btn ${settingsTab === tab.id ? 'is-active' : ''}`}
+                      onClick={() => setSettingsTab(tab.id)}
+                    >
+                      <span className="settings-nav-icon" aria-hidden="true">
+                        <Icon />
+                      </span>
+                      <span className="settings-nav-copy">
+                        <strong>{tab.label}</strong>
+                        <small>{tab.caption}</small>
+                      </span>
+                      <span className="settings-nav-meta">{tab.value}</span>
+                    </button>
+                  );
+                })}
               </nav>
-              <button className="ghost settings-close-btn" onClick={() => setSettingsOpen(false)}>
-                关闭
-              </button>
+              <div className="settings-sidebar-card">
+                <span className="settings-sidebar-label">当前上下文</span>
+                <strong>{snapshot.selectedRepo?.fullName ?? '未选择仓库'}</strong>
+                <small>
+                  {autoModeEnabled
+                    ? `下次轮询 ${autoModeCountdown || autoModePollIntervalSec}s`
+                    : '自动模式已关闭'}
+                </small>
+              </div>
             </aside>
             <main className="settings-content">
-              {settingsTab === 'agent' ? (
-                <section className="settings-section">
-                  <h4>Agent Provider</h4>
-                  <p className="muted">
-                    实施 Agent 和 Review Agent 可以分别指定 Claude 或 Codex，也可以单独配置 Review 审查严格度、最大轮次和提交流程。
-                  </p>
-                  <label className="settings-input-group">
-                    实施 Agent
-                    <select
-                      value={implementationProvider}
-                      onChange={(event) => setImplementationProvider(event.target.value as AgentProvider)}
-                    >
-                      <option value="claude">Claude</option>
-                      <option value="codex">Codex</option>
-                    </select>
-                  </label>
-                  <label className="settings-input-group">
-                    Review Agent
-                    <select
-                      value={reviewProvider}
-                      onChange={(event) => setReviewProvider(event.target.value as AgentProvider)}
-                    >
-                      <option value="claude">Claude</option>
-                      <option value="codex">Codex</option>
-                    </select>
-                  </label>
-                  <label className="settings-input-group">
-                    审查严格度
-                    <select
-                      value={reviewStrictness}
-                      onChange={(event) =>
-                        setReviewStrictness(event.target.value as ReviewStrictness)
-                      }
-                    >
-                      <option value="strict">严格</option>
-                      <option value="normal">一般</option>
-                      <option value="lenient">宽松</option>
-                    </select>
-                    <span className="muted">
-                      严格：关键测试/边界不足也会拦截；一般：拦截会影响合入质量的问题；宽松：只拦截明确 bug、未完成需求或明显回归风险。
-                    </span>
-                  </label>
-                  <label className="settings-input-group">
-                    最大 Review 轮次
-                    <div className="settings-input-row">
-                      <input
-                        type="number"
-                        min={1}
-                        max={8}
-                        value={reviewMaxRounds}
-                        onChange={(event) => setReviewMaxRounds(Number(event.target.value) || 1)}
-                      />
-                      <span className="muted">默认 3，范围 1-8</span>
-                    </div>
-                  </label>
-                  <label className="settings-input-group">
-                    提交模式
-                    <select
-                      value={submissionMode}
-                      onChange={(event) => setSubmissionMode(event.target.value as SubmissionMode)}
-                    >
-                      <option value="branch">分支模式（默认）</option>
-                      <option value="pr">PR 模式</option>
-                    </select>
-                    <span className="muted">
-                      分支模式会在 Review 通过后直接提交到固定分支；PR 模式保持当前 Fork + PR 流程。
-                    </span>
-                  </label>
-                  <label className="settings-input-group">
-                    固定分支名称
-                    <input
-                      value={directBranchName}
-                      onChange={(event) => setDirectBranchName(event.target.value)}
-                      placeholder="develop"
-                      disabled={submissionMode === 'pr'}
-                    />
-                    <span className="muted">
-                      仅在分支模式生效。若目标分支不存在，会基于仓库默认分支自动创建。
-                    </span>
-                  </label>
-                  {visibleProviderStatuses.length > 0 ? (
-                    <div className="provider-status-list">
-                      {(['claude', 'codex'] as AgentProvider[]).map((provider) => {
-                        const status = providerStatusMap.get(provider);
-                        if (!status?.determined) {
-                          return null;
-                        }
-                        return (
-                          <div key={provider} className="provider-status-item">
-                            <strong>{agentProviderLabel(provider)}</strong>
-                            <span className={status.available ? 'provider-status-ok' : 'provider-status-bad'}>
-                              {status.available ? '可用' : '未就绪'}
-                            </span>
-                            <small>{status.detail}</small>
+              <div className="settings-panel-head">
+                <div className="settings-panel-head-copy">
+                  <span className="settings-panel-icon" aria-hidden="true">
+                    <ActiveSettingsIcon />
+                  </span>
+                  <div>
+                    <h4>{activeSettingsTab.label}</h4>
+                    <p className="muted">{settingsPanelDescription}</p>
+                  </div>
+                </div>
+                <button
+                  className="ghost icon-btn settings-close-btn"
+                  onClick={() => setSettingsOpen(false)}
+                  title="关闭设置"
+                  aria-label="关闭设置"
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+              <div className="settings-scroll-region">
+                {settingsTab === 'agent' ? (
+                  <section className="settings-section">
+                    <div className="settings-card-grid">
+                      <section className="settings-card settings-card-accent">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <Bot />
+                          </span>
+                          <div>
+                            <h5>Provider</h5>
+                            <p className="muted">实施与 Review 分开配置。</p>
                           </div>
-                        );
-                      })}
+                        </div>
+                        <div className="settings-form-grid">
+                          <label className="settings-input-group">
+                            实施 Agent
+                            <select
+                              value={implementationProvider}
+                              onChange={(event) => setImplementationProvider(event.target.value as AgentProvider)}
+                            >
+                              <option value="claude">Claude</option>
+                              <option value="codex">Codex</option>
+                            </select>
+                          </label>
+                          <label className="settings-input-group">
+                            Review Agent
+                            <select
+                              value={reviewProvider}
+                              onChange={(event) => setReviewProvider(event.target.value as AgentProvider)}
+                            >
+                              <option value="claude">Claude</option>
+                              <option value="codex">Codex</option>
+                            </select>
+                          </label>
+                        </div>
+                      </section>
+
+                      <section className="settings-card">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <ShieldCheck />
+                          </span>
+                          <div>
+                            <h5>Review</h5>
+                            <p className="muted">控制审查强度和轮次。</p>
+                          </div>
+                        </div>
+                        <div className="settings-form-grid">
+                          <label className="settings-input-group">
+                            审查严格度
+                            <select
+                              value={reviewStrictness}
+                              onChange={(event) =>
+                                setReviewStrictness(event.target.value as ReviewStrictness)
+                              }
+                            >
+                              <option value="strict">严格</option>
+                              <option value="normal">一般</option>
+                              <option value="lenient">宽松</option>
+                            </select>
+                          </label>
+                          <label className="settings-input-group">
+                            最大 Review 轮次
+                            <div className="settings-input-row">
+                              <input
+                                type="number"
+                                min={1}
+                                max={8}
+                                value={reviewMaxRounds}
+                                onChange={(event) => setReviewMaxRounds(Number(event.target.value) || 1)}
+                              />
+                              <span className="muted">1-8</span>
+                            </div>
+                          </label>
+                        </div>
+                      </section>
+
+                      <section className="settings-card">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            {submissionMode === 'pr' ? <GitPullRequest /> : <GitBranch />}
+                          </span>
+                          <div>
+                            <h5>提交</h5>
+                            <p className="muted">选择固定分支或 PR 流程。</p>
+                          </div>
+                        </div>
+                        <div className="settings-form-grid">
+                          <label className="settings-input-group">
+                            提交模式
+                            <select
+                              value={submissionMode}
+                              onChange={(event) => setSubmissionMode(event.target.value as SubmissionMode)}
+                            >
+                              <option value="branch">分支模式（默认）</option>
+                              <option value="pr">PR 模式</option>
+                            </select>
+                          </label>
+                          <label className="settings-input-group">
+                            固定分支名称
+                            <input
+                              value={directBranchName}
+                              onChange={(event) => setDirectBranchName(event.target.value)}
+                              placeholder="develop"
+                              disabled={submissionMode === 'pr'}
+                            />
+                          </label>
+                        </div>
+                      </section>
                     </div>
-                  ) : null}
-                  <div className="settings-section-actions">
-                    <button disabled={savingSettings} onClick={() => void handleSaveAgentSettings()}>
-                      {savingSettings ? '保存中...' : '保存 Agent 配置'}
-                    </button>
-                  </div>
-                </section>
-              ) : null}
-              {settingsTab === 'auto' ? (
-                <section className="settings-section">
-                  <h4>自动模式</h4>
-                  <p className="muted">
-                    开启后会定时拉取当前仓库 Open Issue，自动触发开发任务，并进入右侧任务队列串行执行。
-                  </p>
-                  <div className="settings-toggle-row">
-                    <label className="toggle-line">
-                      <input
-                        type="checkbox"
-                        checked={autoModeEnabled}
-                        onChange={(event) => {
-                          setAutoModeEnabled(event.target.checked);
-                          void persistAutoModeSettings(event.target.checked, autoModePollIntervalSec, true);
-                        }}
-                      />
-                      启用自动模式
-                    </label>
-                    <span className={`settings-status-badge ${autoModeEnabled ? 'is-on' : 'is-off'}`}>
-                      {autoModeEnabled ? '已开启' : '已关闭'}
-                    </span>
-                  </div>
-                  <label className="settings-input-group">
-                    轮询间隔（秒）
-                    <div className="settings-input-row">
-                      <input
-                        type="number"
-                        min={30}
-                        max={3600}
-                        step={10}
-                        value={autoModePollIntervalSec}
-                        onChange={(event) => {
-                          const next = event.target.valueAsNumber;
-                          const value = Number.isFinite(next) ? next : 180;
-                          setAutoModePollIntervalSec(value);
-                        }}
-                        onBlur={() => {
-                          void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true);
-                        }}
-                      />
-                      <button
-                        className="ghost"
-                        disabled={savingSettings}
-                        onClick={() => void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true)}
-                      >
-                        应用
-                      </button>
+
+                    {visibleProviderStatuses.length > 0 ? (
+                      <section className="settings-card">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            {readyProviderCount === visibleProviderStatuses.length ? (
+                              <CheckCircle2 />
+                            ) : (
+                              <CircleAlert />
+                            )}
+                          </span>
+                          <div>
+                            <h5>环境状态</h5>
+                            <p className="muted">
+                              {readyProviderCount}/{visibleProviderStatuses.length} 可直接执行。
+                            </p>
+                          </div>
+                        </div>
+                        <div className="provider-status-list">
+                          {(['claude', 'codex'] as AgentProvider[]).map((provider) => {
+                            const status = providerStatusMap.get(provider);
+                            if (!status?.determined) {
+                              return null;
+                            }
+                            return (
+                              <div key={provider} className="provider-status-item">
+                                <div className="provider-status-head">
+                                  <strong>{agentProviderLabel(provider)}</strong>
+                                  <span className={status.available ? 'provider-status-ok' : 'provider-status-bad'}>
+                                    {status.available ? '可用' : '未就绪'}
+                                  </span>
+                                </div>
+                                <small>{status.detail}</small>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ) : null}
+                  </section>
+                ) : null}
+                {settingsTab === 'auto' ? (
+                  <section className="settings-section">
+                    <div className="settings-card-grid settings-card-grid-auto">
+                      <section className={`settings-card settings-card-highlight ${autoModeEnabled ? 'is-on' : 'is-off'}`}>
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <Repeat />
+                          </span>
+                          <div>
+                            <h5>自动模式</h5>
+                            <p className="muted">开启后自动拉取 Open Issue 并入队。</p>
+                          </div>
+                        </div>
+                        <div className="settings-toggle-row">
+                          <label className="toggle-line">
+                            <input
+                              type="checkbox"
+                              checked={autoModeEnabled}
+                              onChange={(event) => {
+                                setAutoModeEnabled(event.target.checked);
+                                void persistAutoModeSettings(event.target.checked, autoModePollIntervalSec, true);
+                              }}
+                            />
+                            启用自动模式
+                          </label>
+                          <span className={`settings-status-badge ${autoModeEnabled ? 'is-on' : 'is-off'}`}>
+                            {autoModeEnabled ? '已开启' : '已关闭'}
+                          </span>
+                        </div>
+                        <div className="settings-metric-row">
+                          <div className="settings-metric">
+                            <span>调度方式</span>
+                            <strong>{autoModeEnabled ? '自动轮询' : '手动触发'}</strong>
+                          </div>
+                          <div className="settings-metric">
+                            <span>下次检查</span>
+                            <strong>{autoModeEnabled ? `${autoModeCountdown || autoModePollIntervalSec}s` : '-'}</strong>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section className="settings-card">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <Clock3 />
+                          </span>
+                          <div>
+                            <h5>轮询间隔</h5>
+                            <p className="muted">范围 30-3600 秒。</p>
+                          </div>
+                        </div>
+                        <label className="settings-input-group">
+                          轮询间隔（秒）
+                          <div className="settings-input-row">
+                            <input
+                              type="number"
+                              min={30}
+                              max={3600}
+                              step={10}
+                              value={autoModePollIntervalSec}
+                              onChange={(event) => {
+                                const next = event.target.valueAsNumber;
+                                const value = Number.isFinite(next) ? next : 180;
+                                setAutoModePollIntervalSec(value);
+                              }}
+                              onBlur={() => {
+                                void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true);
+                              }}
+                            />
+                            <button
+                              className="ghost"
+                              disabled={savingSettings}
+                              onClick={() => void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true)}
+                            >
+                              应用
+                            </button>
+                          </div>
+                        </label>
+                      </section>
                     </div>
-                    <small className="muted">范围：30 ~ 3600 秒</small>
-                  </label>
-                </section>
-              ) : null}
-              {settingsTab === 'account' ? (
-                <section className="settings-section">
-                  <h4>账户管理</h4>
-                  <p className="muted">
-                    当前登录账户：{snapshot.account?.login ?? '未知'}
+                  </section>
+                ) : null}
+                {settingsTab === 'account' ? (
+                  <section className="settings-section">
+                    <div className="settings-card-grid settings-card-grid-account">
+                      <section className="settings-card settings-card-accent">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <User />
+                          </span>
+                          <div>
+                            <h5>当前账户</h5>
+                            <p className="muted">用于仓库读取、Issue 拉取和任务提交。</p>
+                          </div>
+                        </div>
+                        <div className="settings-account-block">
+                          <strong>{snapshot.account?.login ?? '未知'}</strong>
+                          <span className="muted">
+                            {snapshot.selectedRepo?.fullName
+                              ? `当前仓库：${snapshot.selectedRepo.fullName}`
+                              : '尚未选择仓库'}
+                          </span>
+                        </div>
+                      </section>
+
+                      <section className="settings-card settings-card-danger">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <LogOut />
+                          </span>
+                          <div>
+                            <h5>退出登录</h5>
+                            <p className="muted">退出后需要重新输入 GitHub PAT。</p>
+                          </div>
+                        </div>
+                        <div className="settings-section-actions">
+                          <button
+                            className="ghost settings-logout"
+                            onClick={() => {
+                              void logout();
+                              setSettingsOpen(false);
+                            }}
+                          >
+                            退出登录
+                          </button>
+                        </div>
+                      </section>
+                    </div>
+                  </section>
+                ) : null}
+                {settingsMessage ? (
+                  <p className={`settings-msg ${settingsMessageTone}`}>
+                    {settingsMessage}
                   </p>
-                  <div className="settings-section-actions">
-                    <button className="ghost settings-logout" onClick={() => { void logout(); setSettingsOpen(false); }}>
-                      退出登录
-                    </button>
-                  </div>
-                </section>
-              ) : null}
-              {settingsMessage ? (
-                <p className={`settings-msg ${settingsMessage.includes('失败') || settingsMessage.includes('错误') ? 'is-error' : 'is-success'}`}>
-                  {settingsMessage}
-                </p>
-              ) : null}
+                ) : null}
+              </div>
             </main>
           </div>
         </div>
