@@ -9,6 +9,7 @@ import type {
   TaskFileChange,
   TaskLog
 } from '../../shared/types';
+import { buildLogDedupKey, normalizeVisibleLogText } from '../../shared/log-dedupe';
 import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import {
@@ -60,7 +61,29 @@ interface AgentRunParams {
 }
 
 function normalizeLogText(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return normalizeVisibleLogText(text);
+}
+
+function shouldSkipDuplicateLog(taskLogs: TaskLog[], next: Omit<TaskLog, 'at'>, now: number): boolean {
+  const nextKey = buildLogDedupKey(next.text);
+  if (!nextKey) {
+    return false;
+  }
+
+  for (let index = taskLogs.length - 1; index >= 0; index -= 1) {
+    const candidate = taskLogs[index];
+    if (now - candidate.at > LOG_DUPLICATE_WINDOW_MS) {
+      break;
+    }
+    if (candidate.level !== next.level) {
+      continue;
+    }
+    if (buildLogDedupKey(candidate.text) === nextKey) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function shouldReplaceStreamingLog(previous: TaskLog, next: Omit<TaskLog, 'at'>, now: number): boolean {
@@ -493,12 +516,7 @@ export class TaskManager {
     }
     const now = Date.now();
     const last = task.logs[task.logs.length - 1];
-    if (
-      last &&
-      last.level === log.level &&
-      normalizeLogText(last.text) === normalizeLogText(log.text) &&
-      now - last.at < LOG_DUPLICATE_WINDOW_MS
-    ) {
+    if (shouldSkipDuplicateLog(task.logs, log, now)) {
       return;
     }
 
