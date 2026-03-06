@@ -3,6 +3,7 @@ import type {
   AgentProvider,
   EnqueueTaskInput,
   IssueDetail,
+  ReviewStrictness,
   TaskEntity,
   TaskFileChange,
   TaskLog
@@ -35,7 +36,6 @@ type TaskListener = (task: TaskEntity) => void;
 
 const LOG_DUPLICATE_WINDOW_MS = 15_000;
 const LOG_STREAM_UPDATE_WINDOW_MS = 15_000;
-const DEFAULT_REVIEW_MAX_ROUNDS = 3;
 
 interface ReviewDecision {
   approved: boolean;
@@ -171,14 +171,6 @@ export class TaskManager {
     return mainState.getTask(task.id)!;
   }
 
-  private getReviewMaxRounds(): number {
-    const parsed = Number(process.env.BUILDBOT_REVIEW_MAX_ROUNDS ?? DEFAULT_REVIEW_MAX_ROUNDS);
-    if (!Number.isFinite(parsed)) {
-      return DEFAULT_REVIEW_MAX_ROUNDS;
-    }
-    return Math.min(8, Math.max(1, Math.trunc(parsed)));
-  }
-
   private isAgentRuntimeLog(text: string): boolean {
     const normalized = normalizeLogText(text);
     return (
@@ -262,10 +254,12 @@ export class TaskManager {
     taskType: 'bugfix' | 'feature';
     reviewProvider: AgentProvider;
     implementationProvider: AgentProvider;
+    reviewStrictness: ReviewStrictness;
+    reviewMaxRounds: number;
     signal?: AbortSignal;
     changedFiles: string[];
   }): Promise<string[]> {
-    const maxRounds = this.getReviewMaxRounds();
+    const maxRounds = params.reviewMaxRounds;
     let changedFiles = params.changedFiles;
 
     for (let round = 1; round <= maxRounds; round += 1) {
@@ -284,7 +278,8 @@ export class TaskManager {
           params.taskType,
           changedFiles,
           diffSummary,
-          round
+          round,
+          params.reviewStrictness
         ),
         taskType: params.taskType,
         provider: params.reviewProvider,
@@ -618,6 +613,8 @@ export class TaskManager {
         taskType: task.taskType,
         reviewProvider: agentSettings.reviewProvider,
         implementationProvider: agentSettings.implementationProvider,
+        reviewStrictness: agentSettings.reviewStrictness,
+        reviewMaxRounds: agentSettings.reviewMaxRounds,
         signal: abortController.signal,
         changedFiles
       });
@@ -698,12 +695,14 @@ export class TaskManager {
     taskType: 'bugfix' | 'feature',
     changedFiles: string[],
     diffSummary: string,
-    round: number
+    round: number,
+    strictness: ReviewStrictness
   ): string {
     const modeInstruction =
       taskType === 'feature'
         ? '这是一个 Feature 任务，请重点检查需求覆盖、边界条件和必要测试。'
         : '这是一个 Bug Fix 任务，请重点检查根因是否真正解决、是否有回归风险和缺失测试。';
+    const strictnessInstruction = this.buildReviewStrictnessInstruction(strictness, taskType);
 
     const comments = issue.comments
       .map((comment) => `- [${comment.author}] ${comment.body}`)
@@ -713,6 +712,7 @@ export class TaskManager {
       '你是 BuildBot 的 Review Agent。',
       '当前仓库已经存在未提交代码改动。你的职责是只做代码审查，不要修改任何文件，不要执行 git commit/push。',
       modeInstruction,
+      strictnessInstruction,
       '',
       `当前是第 ${round} 轮审查。`,
       `Issue #${issue.number}: ${issue.title}`,
@@ -734,9 +734,11 @@ export class TaskManager {
       '审查要求：',
       '1) 你可以自行查看代码、git diff、测试文件，判断这些改动是否已经达到可提交 PR 的质量。',
       '2) 只列出必须修改的问题；可选建议不要写进反馈。',
-      '3) 只要存在任何必须修改的问题，就必须判定 FAIL。',
-      '4) 只有你愿意批准现在这版代码直接提交 PR，才能判定 PASS。',
-      '5) 最终输出必须严格包含以下三段，方便程序解析：',
+      '3) 结合当前严格度配置判断哪些问题属于必须修改项。',
+      '4) 只要存在任何必须修改的问题，就必须判定 FAIL。',
+      '5) 只有你愿意批准现在这版代码直接提交 PR，才能判定 PASS。',
+      '6) 不要因为措辞风格、个人偏好或非关键性重构建议而判定 FAIL。',
+      '7) 最终输出必须严格包含以下三段，方便程序解析：',
       'REVIEW_DECISION: PASS 或 FAIL',
       'REVIEW_SUMMARY: 一句话中文总结',
       'REVIEW_FEEDBACK:',
@@ -801,6 +803,42 @@ export class TaskManager {
       '4) 保留与当前 Issue 相关的有效改动，不要无意义回滚',
       '5) 结束时给出简要变更说明'
     ].join('\n');
+  }
+
+  private buildReviewStrictnessInstruction(
+    strictness: ReviewStrictness,
+    taskType: 'bugfix' | 'feature'
+  ): string {
+    const taskSpecificRule =
+      taskType === 'feature'
+        ? 'Feature 额外规则：需求主路径未闭环、关键交互/边界条件遗漏，或新增能力缺少必要验证时，应倾向判定 FAIL。'
+        : 'Bug Fix 额外规则：如果改动没有真正覆盖根因、只是掩盖现象，或存在明显回归窗口，应倾向判定 FAIL。';
+
+    switch (strictness) {
+      case 'strict':
+        return [
+          '当前审查严格度：严格。',
+          '标准：对正确性、边界条件、回归风险、测试充分性和实现稳健性保持保守判断。',
+          taskSpecificRule,
+          '必须 FAIL 的典型情形：存在较明显的潜在缺陷；需求覆盖不完整；关键路径或关键边界缺少测试/验证；实现虽然可运行但你对直接合入仍有实质疑虑。'
+        ].join('\n');
+      case 'lenient':
+        return [
+          '当前审查严格度：宽松。',
+          '标准：只拦截明确会影响合入质量的问题。',
+          taskSpecificRule,
+          '必须 FAIL 的典型情形：需求明显未完成；存在实际 bug、安全问题、明显回归风险；缺少不可或缺的验证以致结果不可信。',
+          '默认不要 FAIL 的情形：可接受的实现取舍、轻微测试欠缺、局部可优化项、风格或重构层面的建议。'
+        ].join('\n');
+      default:
+        return [
+          '当前审查严格度：一般。',
+          '标准：拦截会影响正确性、需求完成度、回归风险和必要测试的问题。',
+          taskSpecificRule,
+          '必须 FAIL 的典型情形：主需求未完成；关键路径有明显漏洞；中高风险改动缺少必要测试；实现会让后续维护或合入风险显著增加。',
+          '默认不要 FAIL 的情形：非关键优化项、主观风格问题、可后续迭代的小改进。'
+        ].join('\n');
+    }
   }
 }
 

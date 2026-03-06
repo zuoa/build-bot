@@ -8,7 +8,6 @@ export declare class TaskManager {
     constructor(onTaskUpdate: TaskListener);
     enqueue(input: EnqueueTaskInput, issueTitle: string): TaskEntity;
     private commitTaskChanges;
-    private getReviewMaxRounds;
     private isAgentRuntimeLog;
     private runAgent;
     private parseReviewDecision;
@@ -25,6 +24,7 @@ export declare class TaskManager {
     private buildImplementationPrompt;
     private buildReviewPrompt;
     private buildRevisionPrompt;
+    private buildReviewStrictnessInstruction;
 }
 export declare function initTaskManager(onTaskUpdate: TaskListener): TaskManager;
 export declare function getTaskManager(): TaskManager;

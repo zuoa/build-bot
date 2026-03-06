@@ -1,9 +1,12 @@
 export type TaskType = 'bugfix' | 'feature';
 export type AgentProvider = 'claude' | 'codex';
+export type ReviewStrictness = 'strict' | 'normal' | 'lenient';
 
 export interface AgentRoleSettings {
   implementationProvider: AgentProvider;
   reviewProvider: AgentProvider;
+  reviewStrictness: ReviewStrictness;
+  reviewMaxRounds: number;
 }
 
 export interface AgentProviderStatus {

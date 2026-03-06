@@ -68,7 +68,15 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.SAVE_AGENT_SETTINGS, async (_, settings?: AgentRoleSettings) => {
     return saveAgentSettings({
       implementationProvider: settings?.implementationProvider === 'codex' ? 'codex' : 'claude',
-      reviewProvider: settings?.reviewProvider === 'codex' ? 'codex' : 'claude'
+      reviewProvider: settings?.reviewProvider === 'codex' ? 'codex' : 'claude',
+      reviewStrictness:
+        settings?.reviewStrictness === 'strict' || settings?.reviewStrictness === 'lenient'
+          ? settings.reviewStrictness
+          : 'normal',
+      reviewMaxRounds:
+        typeof settings?.reviewMaxRounds === 'number' && Number.isFinite(settings.reviewMaxRounds)
+          ? settings.reviewMaxRounds
+          : 3
     });
   });
 

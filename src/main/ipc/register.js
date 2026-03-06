@@ -59,7 +59,13 @@ export function registerIpcHandlers(mainWindow) {
     ipcMain.handle(IPC_CHANNELS.SAVE_AGENT_SETTINGS, async (_, settings) => {
         return saveAgentSettings({
             implementationProvider: settings?.implementationProvider === 'codex' ? 'codex' : 'claude',
-            reviewProvider: settings?.reviewProvider === 'codex' ? 'codex' : 'claude'
+            reviewProvider: settings?.reviewProvider === 'codex' ? 'codex' : 'claude',
+            reviewStrictness: settings?.reviewStrictness === 'strict' || settings?.reviewStrictness === 'lenient'
+                ? settings.reviewStrictness
+                : 'normal',
+            reviewMaxRounds: typeof settings?.reviewMaxRounds === 'number' && Number.isFinite(settings.reviewMaxRounds)
+                ? settings.reviewMaxRounds
+                : 3
         });
     });
     ipcMain.handle(IPC_CHANNELS.GET_STATE, () => {

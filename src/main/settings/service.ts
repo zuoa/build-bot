@@ -1,11 +1,13 @@
 import keytar from 'keytar';
-import type { AgentRoleSettings, AutoModeSettings } from '../../shared/types';
+import type { AgentRoleSettings, AutoModeSettings, ReviewStrictness } from '../../shared/types';
 
 const SERVICE_NAME = 'buildbot-desktop-mvp';
 const AUTO_MODE_ACCOUNT = 'auto-mode-settings';
 const AGENT_SETTINGS_ACCOUNT = 'agent-role-settings';
 const MIN_AUTO_POLL_INTERVAL_SEC = 30;
 const MAX_AUTO_POLL_INTERVAL_SEC = 60 * 60;
+const MIN_REVIEW_MAX_ROUNDS = 1;
+const MAX_REVIEW_MAX_ROUNDS = 8;
 
 let cachedAutoModeSettings: AutoModeSettings | undefined;
 let cachedAgentSettings: AgentRoleSettings | undefined;
@@ -16,7 +18,9 @@ const DEFAULT_AUTO_MODE_SETTINGS: AutoModeSettings = {
 };
 const DEFAULT_AGENT_SETTINGS: AgentRoleSettings = {
   implementationProvider: 'claude',
-  reviewProvider: 'claude'
+  reviewProvider: 'claude',
+  reviewStrictness: 'normal',
+  reviewMaxRounds: 3
 };
 
 function normalizeAutoPollIntervalSec(value: number): number {
@@ -37,10 +41,29 @@ function normalizeAutoModeSettings(input: Partial<AutoModeSettings>): AutoModeSe
   };
 }
 
+function normalizeReviewStrictness(value?: ReviewStrictness): ReviewStrictness {
+  if (value === 'strict' || value === 'lenient') {
+    return value;
+  }
+  return 'normal';
+}
+
+function normalizeReviewMaxRounds(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_AGENT_SETTINGS.reviewMaxRounds;
+  }
+  const rounded = Math.round(value);
+  return Math.min(MAX_REVIEW_MAX_ROUNDS, Math.max(MIN_REVIEW_MAX_ROUNDS, rounded));
+}
+
 function normalizeAgentSettings(input: Partial<AgentRoleSettings>): AgentRoleSettings {
   return {
     implementationProvider: input.implementationProvider === 'codex' ? 'codex' : 'claude',
-    reviewProvider: input.reviewProvider === 'codex' ? 'codex' : 'claude'
+    reviewProvider: input.reviewProvider === 'codex' ? 'codex' : 'claude',
+    reviewStrictness: normalizeReviewStrictness(input.reviewStrictness),
+    reviewMaxRounds: normalizeReviewMaxRounds(
+      input.reviewMaxRounds ?? DEFAULT_AGENT_SETTINGS.reviewMaxRounds
+    )
   };
 }
 

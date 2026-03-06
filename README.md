@@ -7,6 +7,7 @@
 - 一键发起 AI 任务（Bug Fix / Feature）
 - 自动执行：Fork -> 分支 -> Clone -> 实施 Agent -> Review Agent
 - 支持为实施 Agent / Review Agent 分别指定 Claude 或 Codex
+- 支持配置 Review Agent 审查严格度（严格/一般/宽松）与最大 Review 轮次
 - 实时日志展示、任务队列（串行执行）
 - 自动模式开关：支持顶部快捷开关与设置页配置，定时拉取 Open Issue 并自动入队执行
 - Review Agent 通过后自动 commit/push/创建 PR；未通过则继续返工
@@ -43,7 +44,7 @@ npm run dev
 6. 如果 Review Agent 未通过，系统会根据审查意见继续返工并再次审查
 7. 只有 Review Agent 明确通过后，系统才会自动 push 并创建 PR，返回 PR 链接
 8. 可在顶部“切换仓库”按钮旁快速开/关“自动模式”
-9. 也可在设置中调整自动模式轮询间隔（30~3600 秒）
+9. 也可在设置中调整 Review 严格度、Review 最大轮次，以及自动模式轮询间隔（30~3600 秒）
 
 ## 自动模式说明
 

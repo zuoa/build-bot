@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { FolderOpen, Settings } from 'lucide-react';
 import { marked } from 'marked';
-import type { AgentProvider, AgentProviderStatus, TaskEntity } from '../shared/types';
+import type {
+  AgentProvider,
+  AgentProviderStatus,
+  ReviewStrictness,
+  TaskEntity
+} from '../shared/types';
 import AppLogo from './components/AppLogo';
 import { useAppStore } from './store/useAppStore';
 
@@ -12,6 +17,17 @@ type WorkspaceView = 'tasks' | 'issues';
 
 function agentProviderLabel(provider: AgentProvider): string {
   return provider === 'codex' ? 'Codex' : 'Claude';
+}
+
+function reviewStrictnessLabel(strictness: ReviewStrictness): string {
+  switch (strictness) {
+    case 'strict':
+      return '严格';
+    case 'lenient':
+      return '宽松';
+    default:
+      return '一般';
+  }
 }
 
 function formatTime(value?: number | string): string {
@@ -143,6 +159,8 @@ export default function App(): JSX.Element {
   const [repoCandidate, setRepoCandidate] = useState('');
   const [implementationProvider, setImplementationProvider] = useState<AgentProvider>('claude');
   const [reviewProvider, setReviewProvider] = useState<AgentProvider>('claude');
+  const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictness>('normal');
+  const [reviewMaxRounds, setReviewMaxRounds] = useState(3);
   const [providerStatuses, setProviderStatuses] = useState<AgentProviderStatus[]>([]);
   const [autoModeEnabled, setAutoModeEnabled] = useState(false);
   const [autoModePollIntervalSec, setAutoModePollIntervalSec] = useState(180);
@@ -176,6 +194,8 @@ export default function App(): JSX.Element {
       const settings = await window.desktopApi.getSettings();
       setImplementationProvider(settings.agentSettings.implementationProvider);
       setReviewProvider(settings.agentSettings.reviewProvider);
+      setReviewStrictness(settings.agentSettings.reviewStrictness);
+      setReviewMaxRounds(settings.agentSettings.reviewMaxRounds);
       setProviderStatuses(settings.providerStatuses);
       setAutoModeEnabled(settings.autoMode.enabled);
       setAutoModePollIntervalSec(settings.autoMode.pollIntervalSec);
@@ -445,13 +465,17 @@ export default function App(): JSX.Element {
     try {
       const saved = await window.desktopApi.saveAgentSettings({
         implementationProvider,
-        reviewProvider
+        reviewProvider,
+        reviewStrictness,
+        reviewMaxRounds: Number.isFinite(reviewMaxRounds) ? Math.round(reviewMaxRounds) : 3
       });
       setImplementationProvider(saved.implementationProvider);
       setReviewProvider(saved.reviewProvider);
+      setReviewStrictness(saved.reviewStrictness);
+      setReviewMaxRounds(saved.reviewMaxRounds);
       await refreshSettingsStatus();
       setSettingsMessage(
-        `已保存 Agent 配置：实施 ${agentProviderLabel(saved.implementationProvider)} / Review ${agentProviderLabel(saved.reviewProvider)}`
+        `已保存 Agent 配置：实施 ${agentProviderLabel(saved.implementationProvider)} / Review ${agentProviderLabel(saved.reviewProvider)} / 审查${reviewStrictnessLabel(saved.reviewStrictness)} / ${saved.reviewMaxRounds}轮`
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Agent 配置保存失败';
@@ -683,7 +707,9 @@ export default function App(): JSX.Element {
               {settingsTab === 'agent' ? (
                 <section className="settings-section">
                   <h4>Agent Provider</h4>
-                  <p className="muted">实施 Agent 和 Review Agent 可以分别指定 Claude 或 Codex。</p>
+                  <p className="muted">
+                    实施 Agent 和 Review Agent 可以分别指定 Claude 或 Codex，也可以单独配置 Review 审查严格度和最大轮次。
+                  </p>
                   <label className="settings-input-group">
                     实施 Agent
                     <select
@@ -703,6 +729,35 @@ export default function App(): JSX.Element {
                       <option value="claude">Claude</option>
                       <option value="codex">Codex</option>
                     </select>
+                  </label>
+                  <label className="settings-input-group">
+                    审查严格度
+                    <select
+                      value={reviewStrictness}
+                      onChange={(event) =>
+                        setReviewStrictness(event.target.value as ReviewStrictness)
+                      }
+                    >
+                      <option value="strict">严格</option>
+                      <option value="normal">一般</option>
+                      <option value="lenient">宽松</option>
+                    </select>
+                    <span className="muted">
+                      严格：关键测试/边界不足也会拦截；一般：拦截会影响合入质量的问题；宽松：只拦截明确 bug、未完成需求或明显回归风险。
+                    </span>
+                  </label>
+                  <label className="settings-input-group">
+                    最大 Review 轮次
+                    <div className="settings-input-row">
+                      <input
+                        type="number"
+                        min={1}
+                        max={8}
+                        value={reviewMaxRounds}
+                        onChange={(event) => setReviewMaxRounds(Number(event.target.value) || 1)}
+                      />
+                      <span className="muted">默认 3，范围 1-8</span>
+                    </div>
                   </label>
                   {visibleProviderStatuses.length > 0 ? (
                     <div className="provider-status-list">
