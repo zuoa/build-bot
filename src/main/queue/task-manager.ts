@@ -137,7 +137,7 @@ export class TaskManager {
     });
 
     this.emitTask(next.id);
-    await this.cleanupTaskWorkspace(task.id, task.workspacePath);
+    this.scheduleWorkspaceCleanup(task.id, task.workspacePath);
     return mainState.getTask(task.id)!;
   }
 
@@ -199,6 +199,10 @@ export class TaskManager {
         text: `工作目录清理失败：${message}`
       });
     }
+  }
+
+  private scheduleWorkspaceCleanup(taskId: string, workspacePath?: string): void {
+    void this.cleanupTaskWorkspace(taskId, workspacePath);
   }
 
   private appendLog(taskId: string, log: Omit<TaskLog, 'at'>): void {
@@ -314,7 +318,7 @@ export class TaskManager {
           level: 'error',
           text: 'AI 未生成代码变更，请查看执行日志'
         });
-        await this.cleanupTaskWorkspace(taskId, workspacePath);
+        this.scheduleWorkspaceCleanup(taskId, workspacePath);
         this.onTaskUpdate(failed);
         return;
       }
@@ -345,7 +349,7 @@ export class TaskManager {
           result: { error: message }
         });
         this.appendLog(taskId, { level: 'error', text: '任务已取消' });
-        await this.cleanupTaskWorkspace(taskId, mainState.getTask(taskId)?.workspacePath);
+        this.scheduleWorkspaceCleanup(taskId, mainState.getTask(taskId)?.workspacePath);
         this.onTaskUpdate(cancelled);
       } else {
         const failed = mainState.patchTask(taskId, {
@@ -354,7 +358,7 @@ export class TaskManager {
           result: { error: message }
         });
         this.appendLog(taskId, { level: 'error', text: message });
-        await this.cleanupTaskWorkspace(taskId, mainState.getTask(taskId)?.workspacePath);
+        this.scheduleWorkspaceCleanup(taskId, mainState.getTask(taskId)?.workspacePath);
         this.onTaskUpdate(failed);
       }
     } finally {
