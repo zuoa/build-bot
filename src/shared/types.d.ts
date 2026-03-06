@@ -1,4 +1,15 @@
 export type TaskType = 'bugfix' | 'feature';
+export type AgentProvider = 'claude' | 'codex';
+export interface AgentRoleSettings {
+    implementationProvider: AgentProvider;
+    reviewProvider: AgentProvider;
+}
+export interface AgentProviderStatus {
+    provider: AgentProvider;
+    available?: boolean;
+    detail: string;
+    determined: boolean;
+}
 export interface AuthSession {
     token: string;
     login: string;

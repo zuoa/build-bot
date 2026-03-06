@@ -13,6 +13,9 @@ export default defineConfig({
       main: {
         entry: 'src/main/index.ts',
         vite: {
+          resolve: {
+            extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json']
+          },
           build: {
             rollupOptions: {
               external: ['keytar', /\.node$/]
@@ -21,7 +24,12 @@ export default defineConfig({
         }
       },
       preload: {
-        input: 'src/main/preload.ts'
+        input: 'src/main/preload.ts',
+        vite: {
+          resolve: {
+            extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json']
+          }
+        }
       }
     })
   ],

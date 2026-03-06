@@ -1,14 +1,14 @@
-import type { AutoModeSettings, AppStateSnapshot, EnqueueTaskInput, IssueDetail, IssueFilter, RepoSummary, TaskEntity } from './types';
+import type { AgentProviderStatus, AgentRoleSettings, AutoModeSettings, AppStateSnapshot, EnqueueTaskInput, IssueDetail, IssueFilter, RepoSummary, TaskEntity } from './types';
 export interface DesktopApi {
     loginWithToken(token: string): Promise<boolean>;
     logout(): Promise<void>;
     getSettings(): Promise<{
-        hasAnthropicApiKey: boolean;
         autoMode: AutoModeSettings;
+        agentSettings: AgentRoleSettings;
+        providerStatuses: AgentProviderStatus[];
     }>;
-    saveAnthropicApiKey(key: string): Promise<void>;
-    clearAnthropicApiKey(): Promise<void>;
     saveAutoModeSettings(settings: AutoModeSettings): Promise<AutoModeSettings>;
+    saveAgentSettings(settings: AgentRoleSettings): Promise<AgentRoleSettings>;
     getState(): Promise<AppStateSnapshot>;
     listRepos(page?: number): Promise<RepoSummary[]>;
     selectRepo(fullName: string): Promise<void>;
@@ -23,9 +23,8 @@ export declare const IPC_CHANNELS: {
     readonly LOGIN_WITH_TOKEN: "auth:login-with-token";
     readonly LOGOUT: "auth:logout";
     readonly GET_SETTINGS: "settings:get";
-    readonly SAVE_ANTHROPIC_API_KEY: "settings:save-anthropic-api-key";
-    readonly CLEAR_ANTHROPIC_API_KEY: "settings:clear-anthropic-api-key";
     readonly SAVE_AUTO_MODE_SETTINGS: "settings:save-auto-mode-settings";
+    readonly SAVE_AGENT_SETTINGS: "settings:save-agent-settings";
     readonly GET_STATE: "app:get-state";
     readonly LIST_REPOS: "github:list-repos";
     readonly SELECT_REPO: "github:select-repo";
