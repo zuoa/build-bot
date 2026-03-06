@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type DesktopApi } from '../shared/api';
 import type {
+  AgentRoleSettings,
   AutoModeSettings,
   EnqueueTaskInput,
   IssueFilter,
@@ -17,12 +18,6 @@ const desktopApi: DesktopApi = {
   getSettings() {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS);
   },
-  saveAnthropicApiKey(key: string) {
-    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_ANTHROPIC_API_KEY, key);
-  },
-  clearAnthropicApiKey() {
-    return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY);
-  },
   saveAutoModeSettings(settings: AutoModeSettings) {
     const normalized: AutoModeSettings = {
       enabled: Boolean(settings?.enabled),
@@ -32,6 +27,9 @@ const desktopApi: DesktopApi = {
           : 180
     };
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, normalized);
+  },
+  saveAgentSettings(settings: AgentRoleSettings) {
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AGENT_SETTINGS, settings);
   },
   getState() {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_STATE);

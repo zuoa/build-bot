@@ -10,12 +10,6 @@ const desktopApi = {
     getSettings() {
         return ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS);
     },
-    saveAnthropicApiKey(key) {
-        return ipcRenderer.invoke(IPC_CHANNELS.SAVE_ANTHROPIC_API_KEY, key);
-    },
-    clearAnthropicApiKey() {
-        return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY);
-    },
     saveAutoModeSettings(settings) {
         const normalized = {
             enabled: Boolean(settings?.enabled),
@@ -24,6 +18,9 @@ const desktopApi = {
                 : 180
         };
         return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, normalized);
+    },
+    saveAgentSettings(settings) {
+        return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AGENT_SETTINGS, settings);
     },
     getState() {
         return ipcRenderer.invoke(IPC_CHANNELS.GET_STATE);

@@ -1,10 +1,11 @@
 import { ipcMain, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/api';
+import { listAgentProviderStatuses } from '../agent/service';
 import { AutoModeService } from '../automation/service';
 import { bootstrapSessionFromKeychain, loginWithToken, logoutGithub } from '../github/client';
 import { getIssueDetail, getRepo, listIssues, listRepos } from '../github/service';
 import { initTaskManager } from '../queue/task-manager';
-import { clearAnthropicApiKey, hasAnthropicApiKey, saveAnthropicApiKey } from '../settings/service';
+import { getAgentSettings, saveAgentSettings } from '../settings/service';
 import { mainState } from '../state';
 export async function bootstrapAuthFromKeychain() {
     const account = await bootstrapSessionFromKeychain();
@@ -36,16 +37,15 @@ export function registerIpcHandlers(mainWindow) {
     });
     ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
         await autoModeReady;
+        const [agentSettings, providerStatuses] = await Promise.all([
+            getAgentSettings(),
+            listAgentProviderStatuses()
+        ]);
         return {
-            hasAnthropicApiKey: await hasAnthropicApiKey(),
-            autoMode: autoModeService.getSettings()
+            autoMode: autoModeService.getSettings(),
+            agentSettings,
+            providerStatuses
         };
-    });
-    ipcMain.handle(IPC_CHANNELS.SAVE_ANTHROPIC_API_KEY, async (_, key) => {
-        await saveAnthropicApiKey(key);
-    });
-    ipcMain.handle(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY, async () => {
-        await clearAnthropicApiKey();
     });
     ipcMain.handle(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, async (_, settings) => {
         await autoModeReady;
@@ -54,6 +54,12 @@ export function registerIpcHandlers(mainWindow) {
             pollIntervalSec: typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
                 ? settings.pollIntervalSec
                 : 180
+        });
+    });
+    ipcMain.handle(IPC_CHANNELS.SAVE_AGENT_SETTINGS, async (_, settings) => {
+        return saveAgentSettings({
+            implementationProvider: settings?.implementationProvider === 'codex' ? 'codex' : 'claude',
+            reviewProvider: settings?.reviewProvider === 'codex' ? 'codex' : 'claude'
         });
     });
     ipcMain.handle(IPC_CHANNELS.GET_STATE, () => {

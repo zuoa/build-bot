@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { TaskType } from '../../shared/types';
+import type { AgentProviderStatus, TaskType } from '../../shared/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -34,6 +34,15 @@ export interface ClaudeLog {
   text: string;
 }
 
+async function commandExists(command: string): Promise<boolean> {
+  try {
+    await execFileAsync(command, ['--version']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function compareVersion(a: string, b: string): number {
   const pa = a.split('.').map((n) => Number(n));
   const pb = b.split('.').map((n) => Number(n));
@@ -46,7 +55,7 @@ function compareVersion(a: string, b: string): number {
   return 0;
 }
 
-export async function checkClaudeReady(apiKey?: string): Promise<void> {
+export async function checkClaudeReady(): Promise<void> {
   let stdout: string;
   try {
     ({ stdout } = await execFileAsync('claude', ['--version']));
@@ -63,10 +72,6 @@ export async function checkClaudeReady(apiKey?: string): Promise<void> {
     throw new Error(`Claude Code 版本过低，请升级到 ${MIN_CLAUDE_VERSION}+`);
   }
 
-  if (apiKey?.trim()) {
-    return;
-  }
-
   try {
     const { stdout: authStatus } = await execFileAsync('claude', ['auth', 'status', '--json']);
     const parsed = JSON.parse(authStatus) as { loggedIn?: unknown };
@@ -77,7 +82,45 @@ export async function checkClaudeReady(apiKey?: string): Promise<void> {
     // Ignore parse/command errors and return a unified guidance message below.
   }
 
-  throw new Error('未检测到 Claude 认证，请在设置页配置 API Key 或先执行 claude auth login');
+  throw new Error('未检测到 Claude 认证，请先执行 claude auth login');
+}
+
+export async function getClaudeStatus(): Promise<AgentProviderStatus> {
+  if (!(await commandExists('claude'))) {
+    return {
+      provider: 'claude',
+      available: undefined,
+      determined: false,
+      detail: '无法可靠判断 Claude 状态'
+    };
+  }
+
+  try {
+    const { stdout: authStatus } = await execFileAsync('claude', ['auth', 'status', '--json']);
+    const parsed = JSON.parse(authStatus) as { loggedIn?: unknown };
+    if (parsed.loggedIn === true) {
+      return {
+        provider: 'claude',
+        available: true,
+        determined: true,
+        detail: 'Claude 可用（已通过 claude auth login 登录）'
+      };
+    }
+  } catch {
+    return {
+      provider: 'claude',
+      available: undefined,
+      determined: false,
+      detail: '无法可靠判断 Claude 状态'
+    };
+  }
+
+  return {
+    provider: 'claude',
+    available: false,
+    determined: true,
+    detail: '未检测到 Claude 认证，请执行 claude auth login'
+  };
 }
 
 async function getClaudeCapabilities(): Promise<ClaudeCapabilities> {
@@ -340,7 +383,6 @@ async function runClaudeTaskOnce(
     cwd: string;
     prompt: string;
     taskType: TaskType;
-    apiKey?: string;
     onLog: (log: ClaudeLog) => void;
     signal?: AbortSignal;
   },
@@ -365,12 +407,7 @@ async function runClaudeTaskOnce(
       {
         cwd: params.cwd,
         stdio: spawnPlan.stdio,
-        env: params.apiKey?.trim()
-          ? {
-              ...process.env,
-              ANTHROPIC_API_KEY: params.apiKey
-            }
-          : process.env
+        env: process.env
       }
     );
     if (!child.stdout || !child.stderr) {
@@ -556,7 +593,6 @@ export async function runClaudeTask(params: {
   cwd: string;
   prompt: string;
   taskType: TaskType;
-  apiKey?: string;
   onLog: (log: ClaudeLog) => void;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -619,7 +655,7 @@ export async function runClaudeTask(params: {
         retryMessage === REPETITIVE_OUTPUT_ERROR
       ) {
         throw new Error(
-          'Claude 执行卡住且重试后仍未恢复，请检查 Claude CLI 配置/网络，或在设置页改用 API Key 后重试'
+          'Claude 执行卡住且重试后仍未恢复，请检查 Claude CLI 配置或网络后重试'
         );
       }
       throw retryError;

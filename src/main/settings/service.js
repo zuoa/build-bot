@@ -1,47 +1,19 @@
 import keytar from 'keytar';
 const SERVICE_NAME = 'buildbot-desktop-mvp';
-const ANTHROPIC_KEY_ACCOUNT = 'anthropic-api-key';
 const AUTO_MODE_ACCOUNT = 'auto-mode-settings';
+const AGENT_SETTINGS_ACCOUNT = 'agent-role-settings';
 const MIN_AUTO_POLL_INTERVAL_SEC = 30;
 const MAX_AUTO_POLL_INTERVAL_SEC = 60 * 60;
-let cachedAnthropicKey;
 let cachedAutoModeSettings;
+let cachedAgentSettings;
 const DEFAULT_AUTO_MODE_SETTINGS = {
     enabled: false,
     pollIntervalSec: 180
 };
-export async function getAnthropicApiKey() {
-    if (cachedAnthropicKey && cachedAnthropicKey.trim()) {
-        return cachedAnthropicKey;
-    }
-    const stored = await keytar.getPassword(SERVICE_NAME, ANTHROPIC_KEY_ACCOUNT);
-    cachedAnthropicKey = stored?.trim() || undefined;
-    return cachedAnthropicKey;
-}
-export async function saveAnthropicApiKey(key) {
-    const normalized = key.trim();
-    if (!normalized) {
-        throw new Error('API Key 不能为空');
-    }
-    cachedAnthropicKey = normalized;
-    await keytar.setPassword(SERVICE_NAME, ANTHROPIC_KEY_ACCOUNT, normalized);
-}
-export async function clearAnthropicApiKey() {
-    cachedAnthropicKey = undefined;
-    await keytar.deletePassword(SERVICE_NAME, ANTHROPIC_KEY_ACCOUNT);
-}
-export async function hasAnthropicApiKey() {
-    const key = await getAnthropicApiKey();
-    return Boolean(key && key.trim().length > 0);
-}
-export async function resolveAnthropicApiKey() {
-    const stored = await getAnthropicApiKey();
-    if (stored) {
-        return stored;
-    }
-    const fromEnv = process.env.ANTHROPIC_API_KEY?.trim();
-    return fromEnv || undefined;
-}
+const DEFAULT_AGENT_SETTINGS = {
+    implementationProvider: 'claude',
+    reviewProvider: 'claude'
+};
 function normalizeAutoPollIntervalSec(value) {
     if (!Number.isFinite(value)) {
         return DEFAULT_AUTO_MODE_SETTINGS.pollIntervalSec;
@@ -53,6 +25,12 @@ function normalizeAutoModeSettings(input) {
     return {
         enabled: typeof input.enabled === 'boolean' ? input.enabled : DEFAULT_AUTO_MODE_SETTINGS.enabled,
         pollIntervalSec: normalizeAutoPollIntervalSec(input.pollIntervalSec ?? DEFAULT_AUTO_MODE_SETTINGS.pollIntervalSec)
+    };
+}
+function normalizeAgentSettings(input) {
+    return {
+        implementationProvider: input.implementationProvider === 'codex' ? 'codex' : 'claude',
+        reviewProvider: input.reviewProvider === 'codex' ? 'codex' : 'claude'
     };
 }
 export async function getAutoModeSettings() {
@@ -77,5 +55,29 @@ export async function saveAutoModeSettings(settings) {
     const normalized = normalizeAutoModeSettings(settings);
     cachedAutoModeSettings = normalized;
     await keytar.setPassword(SERVICE_NAME, AUTO_MODE_ACCOUNT, JSON.stringify(normalized));
+    return normalized;
+}
+export async function getAgentSettings() {
+    if (cachedAgentSettings) {
+        return cachedAgentSettings;
+    }
+    const stored = await keytar.getPassword(SERVICE_NAME, AGENT_SETTINGS_ACCOUNT);
+    if (!stored) {
+        cachedAgentSettings = DEFAULT_AGENT_SETTINGS;
+        return cachedAgentSettings;
+    }
+    try {
+        const parsed = JSON.parse(stored);
+        cachedAgentSettings = normalizeAgentSettings(parsed);
+    }
+    catch {
+        cachedAgentSettings = DEFAULT_AGENT_SETTINGS;
+    }
+    return cachedAgentSettings;
+}
+export async function saveAgentSettings(settings) {
+    const normalized = normalizeAgentSettings(settings);
+    cachedAgentSettings = normalized;
+    await keytar.setPassword(SERVICE_NAME, AGENT_SETTINGS_ACCOUNT, JSON.stringify(normalized));
     return normalized;
 }

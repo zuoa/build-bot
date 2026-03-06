@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { checkClaudeReady, runClaudeTask } from '../claude/service';
+import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import { addLabelToIssue, createIssueComment, createBranchForIssue, createPullRequest, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
 import { assessIssueRisk, buildHumanConfirmationComment, HUMAN_CONFIRMATION_LABEL } from '../security/issue-guard';
-import { resolveAnthropicApiKey } from '../settings/service';
+import { getAgentSettings } from '../settings/service';
 import { mainState } from '../state';
 const LOG_DUPLICATE_WINDOW_MS = 15_000;
 const LOG_STREAM_UPDATE_WINDOW_MS = 15_000;
+const DEFAULT_REVIEW_MAX_ROUNDS = 3;
 function normalizeLogText(text) {
     return text.replace(/\s+/g, ' ').trim();
 }
@@ -105,6 +106,136 @@ export class TaskManager {
         this.emitTask(next.id);
         this.scheduleWorkspaceCleanup(task.id, task.workspacePath);
         return mainState.getTask(task.id);
+    }
+    getReviewMaxRounds() {
+        const parsed = Number(process.env.BUILDBOT_REVIEW_MAX_ROUNDS ?? DEFAULT_REVIEW_MAX_ROUNDS);
+        if (!Number.isFinite(parsed)) {
+            return DEFAULT_REVIEW_MAX_ROUNDS;
+        }
+        return Math.min(8, Math.max(1, Math.trunc(parsed)));
+    }
+    isAgentRuntimeLog(text) {
+        const normalized = normalizeLogText(text);
+        return (normalized.startsWith('Claude Code 进程已启动') ||
+            normalized === 'Claude Code 执行完成' ||
+            normalized.startsWith('Claude Code 执行中（已运行') ||
+            normalized.startsWith('Claude 启动超过 65s 无输出') ||
+            normalized.startsWith('Claude 长时间无新输出') ||
+            normalized.startsWith('Claude 陷入重复输出循环') ||
+            normalized.startsWith('检测到当前环境不支持 PTY') ||
+            normalized === 'Codex 开始处理当前请求' ||
+            normalized === 'Codex 执行中，等待新的输出...');
+    }
+    async runAgent(params) {
+        const output = [];
+        const result = await runAgentTask({
+            provider: params.provider,
+            cwd: params.cwd,
+            prompt: params.prompt,
+            taskType: params.taskType,
+            signal: params.signal,
+            readOnly: params.readOnly,
+            onLog: (log) => {
+                if (!this.isAgentRuntimeLog(log.text)) {
+                    output.push(log.text);
+                }
+                this.appendLog(params.taskId, {
+                    level: log.level,
+                    text: params.logPrefix ? `[${params.logPrefix}] ${log.text}` : log.text
+                });
+            }
+        });
+        if (result.trim()) {
+            output.push(result.trim());
+        }
+        return output.join('\n');
+    }
+    parseReviewDecision(output) {
+        const decisionMatch = Array.from(output.matchAll(/REVIEW_DECISION:\s*(PASS|FAIL)/gi)).at(-1);
+        const summaryMatch = Array.from(output.matchAll(/REVIEW_SUMMARY:\s*([^\n\r]+)/gi)).at(-1);
+        const feedbackIndex = output.toUpperCase().lastIndexOf('REVIEW_FEEDBACK:');
+        if (!decisionMatch) {
+            throw new Error('Review Agent 未返回 REVIEW_DECISION，无法判断是否通过');
+        }
+        const feedbackSource = feedbackIndex >= 0
+            ? output.slice(feedbackIndex + 'REVIEW_FEEDBACK:'.length)
+            : summaryMatch?.[1] ?? '';
+        const feedback = feedbackSource
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => !this.isAgentRuntimeLog(line))
+            .filter((line) => !/^REVIEW_(DECISION|SUMMARY|FEEDBACK):/i.test(line))
+            .map((line) => line.replace(/^[-*]\s*/, '').trim())
+            .filter(Boolean)
+            .filter((line) => !/^none$/i.test(line));
+        return {
+            approved: decisionMatch[1].toUpperCase() === 'PASS',
+            summary: summaryMatch?.[1]?.trim() || 'Review Agent 未提供摘要',
+            feedback,
+            raw: output.trim()
+        };
+    }
+    async runReviewLoop(params) {
+        const maxRounds = this.getReviewMaxRounds();
+        let changedFiles = params.changedFiles;
+        for (let round = 1; round <= maxRounds; round += 1) {
+            const diffSummary = await getFileDiffSummary(params.workspacePath, changedFiles);
+            this.appendLog(params.taskId, {
+                level: 'info',
+                text: `开始第 ${round}/${maxRounds} 轮 Review Agent 审查`
+            });
+            const reviewOutput = await this.runAgent({
+                taskId: params.taskId,
+                cwd: params.workspacePath,
+                prompt: this.buildReviewPrompt(params.issue, params.readmeHead, params.taskType, changedFiles, diffSummary, round),
+                taskType: params.taskType,
+                provider: params.provider,
+                signal: params.signal,
+                readOnly: params.provider === 'codex',
+                logPrefix: `${agentProviderLabel(params.provider)} Review R${round}`
+            });
+            const decision = this.parseReviewDecision(reviewOutput);
+            this.appendLog(params.taskId, {
+                level: decision.approved ? 'success' : 'error',
+                text: `Review Agent 结论：${decision.approved ? '通过' : '不通过'}；${decision.summary}`
+            });
+            if (decision.approved) {
+                return changedFiles;
+            }
+            const feedbackText = decision.feedback.length > 0
+                ? decision.feedback.map((item) => `- ${item}`).join('\n')
+                : `- ${decision.summary}`;
+            this.appendLog(params.taskId, {
+                level: 'error',
+                text: `Review Agent 要求返工：\n${feedbackText}`
+            });
+            if (round >= maxRounds) {
+                throw new Error(`Review Agent 连续 ${maxRounds} 轮未通过，任务已终止`);
+            }
+            this.appendLog(params.taskId, {
+                level: 'info',
+                text: `开始第 ${round} 次返工，修复 Review Agent 提出的必须修改项`
+            });
+            await this.runAgent({
+                taskId: params.taskId,
+                cwd: params.workspacePath,
+                prompt: this.buildRevisionPrompt(params.issue, params.readmeHead, params.taskType, changedFiles, diffSummary, decision, round),
+                taskType: params.taskType,
+                provider: params.provider,
+                signal: params.signal,
+                logPrefix: `${agentProviderLabel(params.provider)} 修复 R${round}`
+            });
+            changedFiles = await listChangedFiles(params.workspacePath);
+            if (changedFiles.length === 0) {
+                throw new Error('返工后工作区没有可提交变更，无法继续创建 PR');
+            }
+            mainState.patchTask(params.taskId, {
+                changedFiles: changedFiles.map((file) => ({ path: file, selected: true }))
+            });
+            this.emitTask(params.taskId);
+        }
+        throw new Error('Review Agent 审查流程异常结束');
     }
     async cancelTask(taskId) {
         const task = mainState.getTask(taskId);
@@ -241,8 +372,11 @@ export class TaskManager {
         mainState.patchTask(taskId, { status: 'running', startedAt: Date.now() });
         this.emitTask(taskId);
         try {
-            const anthropicApiKey = await resolveAnthropicApiKey();
-            await checkClaudeReady(anthropicApiKey);
+            const agentSettings = await getAgentSettings();
+            await checkAgentReady(agentSettings.implementationProvider);
+            if (agentSettings.reviewProvider !== agentSettings.implementationProvider) {
+                await checkAgentReady(agentSettings.reviewProvider);
+            }
             const issue = await getIssueDetail(task.repoFullName, task.issueNumber);
             this.appendLog(taskId, { level: 'info', text: '开始执行 Issue 安全检查' });
             const risk = assessIssueRisk(issue);
@@ -277,15 +411,19 @@ export class TaskManager {
             mainState.patchTask(taskId, { branchName, workspacePath });
             this.emitTask(taskId);
             const readmeHead = await fetchReadmeHead(task.repoFullName);
-            const prompt = this.buildPrompt(issue, readmeHead, task.taskType);
-            this.appendLog(taskId, { level: 'info', text: 'Claude Code 开始执行' });
-            await runClaudeTask({
+            const prompt = this.buildImplementationPrompt(issue, readmeHead, task.taskType);
+            this.appendLog(taskId, {
+                level: 'info',
+                text: `${agentProviderLabel(agentSettings.implementationProvider)} 开始执行代码实现`
+            });
+            await this.runAgent({
+                taskId,
                 cwd: workspacePath,
                 prompt,
                 taskType: task.taskType,
-                apiKey: anthropicApiKey,
+                provider: agentSettings.implementationProvider,
                 signal: abortController.signal,
-                onLog: (log) => this.appendLog(taskId, log)
+                logPrefix: `${agentProviderLabel(agentSettings.implementationProvider)} 实施`
             });
             const changedFiles = await listChangedFiles(workspacePath);
             if (changedFiles.length === 0) {
@@ -309,11 +447,22 @@ export class TaskManager {
             mainState.patchTask(taskId, {
                 changedFiles: files
             });
+            this.emitTask(taskId);
+            const approvedFiles = await this.runReviewLoop({
+                taskId,
+                workspacePath,
+                issue,
+                readmeHead,
+                taskType: task.taskType,
+                provider: agentSettings.reviewProvider,
+                signal: abortController.signal,
+                changedFiles
+            });
             this.appendLog(taskId, {
                 level: 'info',
-                text: `检测到 ${changedFiles.length} 个变更文件，开始自动提交并创建 PR`
+                text: `Review Agent 已通过，检测到 ${approvedFiles.length} 个变更文件，开始自动提交并创建 PR`
             });
-            await this.commitTaskChanges(taskId, changedFiles);
+            await this.commitTaskChanges(taskId, approvedFiles);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : '任务执行失败，请查看日志和配置';
@@ -342,7 +491,7 @@ export class TaskManager {
             this.runtime.delete(taskId);
         }
     }
-    buildPrompt(issue, readmeHead, taskType) {
+    buildImplementationPrompt(issue, readmeHead, taskType) {
         const modeInstruction = taskType === 'feature'
             ? '你现在在 Feature 开发模式：实现功能并补充必要测试。'
             : '你现在在 Bug Fix 模式：定位根因，最小化改动并确保回归风险可控。';
@@ -368,6 +517,92 @@ export class TaskManager {
             '2) 若仓库已有测试框架，补充或更新必要测试',
             '3) 不要执行破坏性命令',
             '4) 结束时给出简要变更说明'
+        ].join('\n');
+    }
+    buildReviewPrompt(issue, readmeHead, taskType, changedFiles, diffSummary, round) {
+        const modeInstruction = taskType === 'feature'
+            ? '这是一个 Feature 任务，请重点检查需求覆盖、边界条件和必要测试。'
+            : '这是一个 Bug Fix 任务，请重点检查根因是否真正解决、是否有回归风险和缺失测试。';
+        const comments = issue.comments
+            .map((comment) => `- [${comment.author}] ${comment.body}`)
+            .join('\n');
+        return [
+            '你是 BuildBot 的 Review Agent。',
+            '当前仓库已经存在未提交代码改动。你的职责是只做代码审查，不要修改任何文件，不要执行 git commit/push。',
+            modeInstruction,
+            '',
+            `当前是第 ${round} 轮审查。`,
+            `Issue #${issue.number}: ${issue.title}`,
+            'Issue 正文：',
+            issue.body || '(empty)',
+            '',
+            'Issue 评论：',
+            comments || '(no comments)',
+            '',
+            'README 前 500 行：',
+            readmeHead || '(readme unavailable)',
+            '',
+            '当前改动文件：',
+            changedFiles.map((file) => `- ${file}`).join('\n') || '(no changed files)',
+            '',
+            '当前变更摘要：',
+            diffSummary || '(diff summary unavailable)',
+            '',
+            '审查要求：',
+            '1) 你可以自行查看代码、git diff、测试文件，判断这些改动是否已经达到可提交 PR 的质量。',
+            '2) 只列出必须修改的问题；可选建议不要写进反馈。',
+            '3) 只要存在任何必须修改的问题，就必须判定 FAIL。',
+            '4) 只有你愿意批准现在这版代码直接提交 PR，才能判定 PASS。',
+            '5) 最终输出必须严格包含以下三段，方便程序解析：',
+            'REVIEW_DECISION: PASS 或 FAIL',
+            'REVIEW_SUMMARY: 一句话中文总结',
+            'REVIEW_FEEDBACK:',
+            '- 如果 PASS，写 `- none`',
+            '- 如果 FAIL，逐条列出必须修改的问题'
+        ].join('\n');
+    }
+    buildRevisionPrompt(issue, readmeHead, taskType, changedFiles, diffSummary, decision, round) {
+        const modeInstruction = taskType === 'feature'
+            ? '你现在在 Feature 返工模式：在保留已有有效实现的前提下，修复 Review Agent 指出的必须修改项，并补充必要测试。'
+            : '你现在在 Bug Fix 返工模式：针对 Review Agent 指出的根因、回归和测试问题继续修改，保持改动尽量收敛。';
+        const comments = issue.comments
+            .map((comment) => `- [${comment.author}] ${comment.body}`)
+            .join('\n');
+        const feedbackText = decision.feedback.length > 0
+            ? decision.feedback.map((item) => `- ${item}`).join('\n')
+            : `- ${decision.summary}`;
+        return [
+            '你是 BuildBot 的修复 Agent，请直接修改当前仓库，修复 Review Agent 未通过的原因。',
+            modeInstruction,
+            '',
+            `当前是第 ${round} 次返工。`,
+            `Issue #${issue.number}: ${issue.title}`,
+            'Issue 正文：',
+            issue.body || '(empty)',
+            '',
+            'Issue 评论：',
+            comments || '(no comments)',
+            '',
+            'README 前 500 行：',
+            readmeHead || '(readme unavailable)',
+            '',
+            '当前改动文件：',
+            changedFiles.map((file) => `- ${file}`).join('\n') || '(no changed files)',
+            '',
+            '当前变更摘要：',
+            diffSummary || '(diff summary unavailable)',
+            '',
+            'Review Agent 结论：',
+            `摘要：${decision.summary}`,
+            '必须修改项：',
+            feedbackText,
+            '',
+            '完成后要求：',
+            '1) 基于当前工作区继续修改，不要新建提交，不要 push',
+            '2) 必须解决上面所有必须修改项，避免只做表面修补',
+            '3) 如有必要，补充或更新测试',
+            '4) 保留与当前 Issue 相关的有效改动，不要无意义回滚',
+            '5) 结束时给出简要变更说明'
         ].join('\n');
     }
 }

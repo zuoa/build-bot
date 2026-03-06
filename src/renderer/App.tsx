@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { FolderOpen, Settings } from 'lucide-react';
 import { marked } from 'marked';
-import type { TaskEntity } from '../shared/types';
+import type { AgentProvider, AgentProviderStatus, TaskEntity } from '../shared/types';
 import AppLogo from './components/AppLogo';
 import { useAppStore } from './store/useAppStore';
 
@@ -9,6 +9,10 @@ marked.setOptions({ breaks: true, gfm: true });
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 type WorkspaceView = 'tasks' | 'issues';
+
+function agentProviderLabel(provider: AgentProvider): string {
+  return provider === 'codex' ? 'Codex' : 'Claude';
+}
 
 function formatTime(value?: number | string): string {
   if (!value) return '-';
@@ -137,14 +141,15 @@ export default function App(): JSX.Element {
   const [repoSwitcherOpen, setRepoSwitcherOpen] = useState(false);
   const [issueDetailOpen, setIssueDetailOpen] = useState(false);
   const [repoCandidate, setRepoCandidate] = useState('');
-  const [anthropicKey, setAnthropicKey] = useState('');
-  const [hasAnthropicApiKey, setHasAnthropicApiKey] = useState(false);
+  const [implementationProvider, setImplementationProvider] = useState<AgentProvider>('claude');
+  const [reviewProvider, setReviewProvider] = useState<AgentProvider>('claude');
+  const [providerStatuses, setProviderStatuses] = useState<AgentProviderStatus[]>([]);
   const [autoModeEnabled, setAutoModeEnabled] = useState(false);
   const [autoModePollIntervalSec, setAutoModePollIntervalSec] = useState(180);
   const [autoModeCountdown, setAutoModeCountdown] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string>();
-  const [settingsTab, setSettingsTab] = useState<'api' | 'auto' | 'account'>('api');
+  const [settingsTab, setSettingsTab] = useState<'agent' | 'auto' | 'account'>('agent');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
   const logBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -169,7 +174,9 @@ export default function App(): JSX.Element {
   async function refreshSettingsStatus(): Promise<void> {
     try {
       const settings = await window.desktopApi.getSettings();
-      setHasAnthropicApiKey(settings.hasAnthropicApiKey);
+      setImplementationProvider(settings.agentSettings.implementationProvider);
+      setReviewProvider(settings.agentSettings.reviewProvider);
+      setProviderStatuses(settings.providerStatuses);
       setAutoModeEnabled(settings.autoMode.enabled);
       setAutoModePollIntervalSec(settings.autoMode.pollIntervalSec);
     } catch (err) {
@@ -315,6 +322,19 @@ export default function App(): JSX.Element {
     [snapshot.issues]
   );
 
+  const providerStatusMap = useMemo(() => {
+    const map = new Map<AgentProvider, AgentProviderStatus>();
+    providerStatuses.forEach((status) => {
+      map.set(status.provider, status);
+    });
+    return map;
+  }, [providerStatuses]);
+
+  const visibleProviderStatuses = useMemo(
+    () => providerStatuses.filter((status) => status.determined),
+    [providerStatuses]
+  );
+
   async function handleLogin(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!token.trim()) {
@@ -415,41 +435,26 @@ export default function App(): JSX.Element {
 
   async function handleOpenSettings(): Promise<void> {
     setSettingsOpen(true);
-    setAnthropicKey('');
     setSettingsMessage(undefined);
     await refreshSettingsStatus();
   }
 
-  async function handleSaveAnthropicKey(): Promise<void> {
-    if (!anthropicKey.trim()) {
-      setSettingsMessage('API Key 不能为空');
-      return;
-    }
+  async function handleSaveAgentSettings(): Promise<void> {
     setSavingSettings(true);
     setSettingsMessage(undefined);
     try {
-      await window.desktopApi.saveAnthropicApiKey(anthropicKey);
-      setHasAnthropicApiKey(true);
-      setAnthropicKey('');
-      setSettingsMessage('保存成功');
+      const saved = await window.desktopApi.saveAgentSettings({
+        implementationProvider,
+        reviewProvider
+      });
+      setImplementationProvider(saved.implementationProvider);
+      setReviewProvider(saved.reviewProvider);
+      await refreshSettingsStatus();
+      setSettingsMessage(
+        `已保存 Agent 配置：实施 ${agentProviderLabel(saved.implementationProvider)} / Review ${agentProviderLabel(saved.reviewProvider)}`
+      );
     } catch (err) {
-      const message = err instanceof Error ? err.message : '保存失败';
-      setSettingsMessage(message);
-    } finally {
-      setSavingSettings(false);
-    }
-  }
-
-  async function handleClearAnthropicKey(): Promise<void> {
-    setSavingSettings(true);
-    setSettingsMessage(undefined);
-    try {
-      await window.desktopApi.clearAnthropicApiKey();
-      setHasAnthropicApiKey(false);
-      setAnthropicKey('');
-      setSettingsMessage('已清除');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '清除失败';
+      const message = err instanceof Error ? err.message : 'Agent 配置保存失败';
       setSettingsMessage(message);
     } finally {
       setSavingSettings(false);
@@ -652,10 +657,10 @@ export default function App(): JSX.Element {
               <h3>设置</h3>
               <nav className="settings-nav">
                 <button
-                  className={`settings-nav-btn ${settingsTab === 'api' ? 'is-active' : ''}`}
-                  onClick={() => setSettingsTab('api')}
+                  className={`settings-nav-btn ${settingsTab === 'agent' ? 'is-active' : ''}`}
+                  onClick={() => setSettingsTab('agent')}
                 >
-                  API 配置
+                  Agent
                 </button>
                 <button
                   className={`settings-nav-btn ${settingsTab === 'auto' ? 'is-active' : ''}`}
@@ -675,24 +680,52 @@ export default function App(): JSX.Element {
               </button>
             </aside>
             <main className="settings-content">
-              {settingsTab === 'api' ? (
+              {settingsTab === 'agent' ? (
                 <section className="settings-section">
-                  <h4>Anthropic API Key</h4>
-                  <p className="muted">
-                    当前状态：{hasAnthropicApiKey ? '已配置' : '未配置'}
-                  </p>
-                  <input
-                    type="password"
-                    value={anthropicKey}
-                    onChange={(event) => setAnthropicKey(event.target.value)}
-                    placeholder="sk-ant-..."
-                  />
+                  <h4>Agent Provider</h4>
+                  <p className="muted">实施 Agent 和 Review Agent 可以分别指定 Claude 或 Codex。</p>
+                  <label className="settings-input-group">
+                    实施 Agent
+                    <select
+                      value={implementationProvider}
+                      onChange={(event) => setImplementationProvider(event.target.value as AgentProvider)}
+                    >
+                      <option value="claude">Claude</option>
+                      <option value="codex">Codex</option>
+                    </select>
+                  </label>
+                  <label className="settings-input-group">
+                    Review Agent
+                    <select
+                      value={reviewProvider}
+                      onChange={(event) => setReviewProvider(event.target.value as AgentProvider)}
+                    >
+                      <option value="claude">Claude</option>
+                      <option value="codex">Codex</option>
+                    </select>
+                  </label>
+                  {visibleProviderStatuses.length > 0 ? (
+                    <div className="provider-status-list">
+                      {(['claude', 'codex'] as AgentProvider[]).map((provider) => {
+                        const status = providerStatusMap.get(provider);
+                        if (!status?.determined) {
+                          return null;
+                        }
+                        return (
+                          <div key={provider} className="provider-status-item">
+                            <strong>{agentProviderLabel(provider)}</strong>
+                            <span className={status.available ? 'provider-status-ok' : 'provider-status-bad'}>
+                              {status.available ? '可用' : '未就绪'}
+                            </span>
+                            <small>{status.detail}</small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <div className="settings-section-actions">
-                    <button disabled={savingSettings || !anthropicKey.trim()} onClick={() => void handleSaveAnthropicKey()}>
-                      {savingSettings ? '保存中...' : '保存'}
-                    </button>
-                    <button className="ghost" disabled={savingSettings || !hasAnthropicApiKey} onClick={() => void handleClearAnthropicKey()}>
-                      清除
+                    <button disabled={savingSettings} onClick={() => void handleSaveAgentSettings()}>
+                      {savingSettings ? '保存中...' : '保存 Agent 配置'}
                     </button>
                   </div>
                 </section>

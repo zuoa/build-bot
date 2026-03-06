@@ -1,15 +1,12 @@
 import { BrowserWindow, ipcMain, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/api';
-import type { AutoModeSettings, EnqueueTaskInput, IssueFilter } from '../../shared/types';
+import type { AgentRoleSettings, AutoModeSettings, EnqueueTaskInput, IssueFilter } from '../../shared/types';
+import { listAgentProviderStatuses } from '../agent/service';
 import { AutoModeService } from '../automation/service';
 import { bootstrapSessionFromKeychain, loginWithToken, logoutGithub } from '../github/client';
 import { getIssueDetail, getRepo, listIssues, listRepos } from '../github/service';
 import { initTaskManager } from '../queue/task-manager';
-import {
-  clearAnthropicApiKey,
-  hasAnthropicApiKey,
-  saveAnthropicApiKey
-} from '../settings/service';
+import { getAgentSettings, saveAgentSettings } from '../settings/service';
 import { mainState } from '../state';
 
 export async function bootstrapAuthFromKeychain(): Promise<void> {
@@ -46,18 +43,15 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
     await autoModeReady;
+    const [agentSettings, providerStatuses] = await Promise.all([
+      getAgentSettings(),
+      listAgentProviderStatuses()
+    ]);
     return {
-      hasAnthropicApiKey: await hasAnthropicApiKey(),
-      autoMode: autoModeService.getSettings()
+      autoMode: autoModeService.getSettings(),
+      agentSettings,
+      providerStatuses
     };
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SAVE_ANTHROPIC_API_KEY, async (_, key: string) => {
-    await saveAnthropicApiKey(key);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY, async () => {
-    await clearAnthropicApiKey();
   });
 
   ipcMain.handle(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, async (_, settings?: AutoModeSettings) => {
@@ -68,6 +62,13 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
         typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
           ? settings.pollIntervalSec
           : 180
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SAVE_AGENT_SETTINGS, async (_, settings?: AgentRoleSettings) => {
+    return saveAgentSettings({
+      implementationProvider: settings?.implementationProvider === 'codex' ? 'codex' : 'claude',
+      reviewProvider: settings?.reviewProvider === 'codex' ? 'codex' : 'claude'
     });
   });
 

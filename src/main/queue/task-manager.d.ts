@@ -8,6 +8,11 @@ export declare class TaskManager {
     constructor(onTaskUpdate: TaskListener);
     enqueue(input: EnqueueTaskInput, issueTitle: string): TaskEntity;
     private commitTaskChanges;
+    private getReviewMaxRounds;
+    private isAgentRuntimeLog;
+    private runAgent;
+    private parseReviewDecision;
+    private runReviewLoop;
     cancelTask(taskId: string): Promise<void>;
     private kick;
     private processLoop;
@@ -17,7 +22,9 @@ export declare class TaskManager {
     private moveTaskToHumanConfirmation;
     private appendLog;
     private executeTask;
-    private buildPrompt;
+    private buildImplementationPrompt;
+    private buildReviewPrompt;
+    private buildRevisionPrompt;
 }
 export declare function initTaskManager(onTaskUpdate: TaskListener): TaskManager;
 export declare function getTaskManager(): TaskManager;

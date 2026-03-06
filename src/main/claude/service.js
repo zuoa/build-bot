@@ -13,6 +13,15 @@ const REPETITIVE_OUTPUT_LIMIT = 6;
 const REPETITIVE_OUTPUT_ERROR = 'CLAUDE_REPETITIVE_OUTPUT_TIMEOUT';
 const PTY_UNSUPPORTED_ERROR = 'CLAUDE_PTY_UNSUPPORTED';
 let cachedCapabilities;
+async function commandExists(command) {
+    try {
+        await execFileAsync(command, ['--version']);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
 function compareVersion(a, b) {
     const pa = a.split('.').map((n) => Number(n));
     const pb = b.split('.').map((n) => Number(n));
@@ -26,7 +35,7 @@ function compareVersion(a, b) {
     }
     return 0;
 }
-export async function checkClaudeReady(apiKey) {
+export async function checkClaudeReady() {
     let stdout;
     try {
         ({ stdout } = await execFileAsync('claude', ['--version']));
@@ -42,9 +51,6 @@ export async function checkClaudeReady(apiKey) {
     if (compareVersion(version, MIN_CLAUDE_VERSION) < 0) {
         throw new Error(`Claude Code 版本过低，请升级到 ${MIN_CLAUDE_VERSION}+`);
     }
-    if (apiKey?.trim()) {
-        return;
-    }
     try {
         const { stdout: authStatus } = await execFileAsync('claude', ['auth', 'status', '--json']);
         const parsed = JSON.parse(authStatus);
@@ -55,7 +61,43 @@ export async function checkClaudeReady(apiKey) {
     catch {
         // Ignore parse/command errors and return a unified guidance message below.
     }
-    throw new Error('未检测到 Claude 认证，请在设置页配置 API Key 或先执行 claude auth login');
+    throw new Error('未检测到 Claude 认证，请先执行 claude auth login');
+}
+export async function getClaudeStatus() {
+    if (!(await commandExists('claude'))) {
+        return {
+            provider: 'claude',
+            available: undefined,
+            determined: false,
+            detail: '无法可靠判断 Claude 状态'
+        };
+    }
+    try {
+        const { stdout: authStatus } = await execFileAsync('claude', ['auth', 'status', '--json']);
+        const parsed = JSON.parse(authStatus);
+        if (parsed.loggedIn === true) {
+            return {
+                provider: 'claude',
+                available: true,
+                determined: true,
+                detail: 'Claude 可用（已通过 claude auth login 登录）'
+            };
+        }
+    }
+    catch {
+        return {
+            provider: 'claude',
+            available: undefined,
+            determined: false,
+            detail: '无法可靠判断 Claude 状态'
+        };
+    }
+    return {
+        provider: 'claude',
+        available: false,
+        determined: true,
+        detail: '未检测到 Claude 认证，请执行 claude auth login'
+    };
 }
 async function getClaudeCapabilities() {
     if (cachedCapabilities) {
@@ -269,12 +311,7 @@ async function runClaudeTaskOnce(params, options) {
         const child = spawn(spawnPlan.command, spawnPlan.args, {
             cwd: params.cwd,
             stdio: spawnPlan.stdio,
-            env: params.apiKey?.trim()
-                ? {
-                    ...process.env,
-                    ANTHROPIC_API_KEY: params.apiKey
-                }
-                : process.env
+            env: process.env
         });
         if (!child.stdout || !child.stderr) {
             reject(new Error('Claude 进程输出通道不可用'));
@@ -486,7 +523,7 @@ export async function runClaudeTask(params) {
             if (retryMessage === STARTUP_SILENCE_ERROR ||
                 retryMessage === OUTPUT_IDLE_TIMEOUT_ERROR ||
                 retryMessage === REPETITIVE_OUTPUT_ERROR) {
-                throw new Error('Claude 执行卡住且重试后仍未恢复，请检查 Claude CLI 配置/网络，或在设置页改用 API Key 后重试');
+                throw new Error('Claude 执行卡住且重试后仍未恢复，请检查 Claude CLI 配置或网络后重试');
             }
             throw retryError;
         }
