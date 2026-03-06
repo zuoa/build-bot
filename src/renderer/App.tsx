@@ -137,6 +137,7 @@ export default function App(): JSX.Element {
   const [hasAnthropicApiKey, setHasAnthropicApiKey] = useState(false);
   const [autoModeEnabled, setAutoModeEnabled] = useState(false);
   const [autoModePollIntervalSec, setAutoModePollIntervalSec] = useState(180);
+  const [autoModeCountdown, setAutoModeCountdown] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string>();
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
@@ -188,6 +189,27 @@ export default function App(): JSX.Element {
   useEffect(() => {
     setWorkspaceView(autoModeEnabled ? 'tasks' : 'issues');
   }, [autoModeEnabled]);
+
+  // 自动模式倒计时
+  useEffect(() => {
+    if (!autoModeEnabled) {
+      setAutoModeCountdown(0);
+      return;
+    }
+
+    setAutoModeCountdown(autoModePollIntervalSec);
+
+    const interval = setInterval(() => {
+      setAutoModeCountdown((prev) => {
+        if (prev <= 1) {
+          return autoModePollIntervalSec;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [autoModeEnabled, autoModePollIntervalSec]);
 
   const selectedIssue = snapshot.selectedIssue;
   const activeTask = useMemo(
@@ -537,6 +559,11 @@ export default function App(): JSX.Element {
               <span className="auto-toggle-dot" aria-hidden="true" />
               自动模式 {autoModeEnabled ? '开' : '关'}
             </button>
+            {autoModeEnabled && autoModeCountdown > 0 ? (
+              <span className="auto-countdown" title={`下次轮询还有 ${autoModeCountdown} 秒`}>
+                {autoModeCountdown}s
+              </span>
+            ) : null}
           </div>
         </div>
 
