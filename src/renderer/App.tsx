@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { marked } from 'marked';
 import type { TaskEntity } from '../shared/types';
 import AppLogo from './components/AppLogo';
@@ -49,6 +49,19 @@ function statusClass(status: TaskEntity['status']): string {
   }
 }
 
+function logLevelLabel(level: TaskEntity['logs'][number]['level']): string {
+  switch (level) {
+    case 'thinking':
+      return '思考';
+    case 'success':
+      return '完成';
+    case 'error':
+      return '错误';
+    default:
+      return '日志';
+  }
+}
+
 function markdownHtml(content: string): string {
   try {
     const html = marked.parse(content) as string;
@@ -77,7 +90,7 @@ function parseRepoTarget(
         return undefined;
       }
       const fullName = `${parts[0]}/${parts[1]}`;
-      if (parts[2] === 'issues' && parts[3] && /^\\d+$/.test(parts[3])) {
+      if (parts[2] === 'issues' && parts[3] && /^\d+$/.test(parts[3])) {
         return { fullName, issueNumber: Number(parts[3]) };
       }
       return { fullName };
@@ -86,7 +99,7 @@ function parseRepoTarget(
     }
   }
 
-  if (/^[^/\\s]+\\/[^/\\s]+$/.test(input)) {
+  if (/^[^\s/]+\/[^\s/]+$/.test(input)) {
     return { fullName: input };
   }
 
@@ -120,6 +133,12 @@ export default function App(): JSX.Element {
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [fileSelection, setFileSelection] = useState<Record<string, Record<string, boolean>>>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [anthropicKey, setAnthropicKey] = useState('');
+  const [hasAnthropicApiKey, setHasAnthropicApiKey] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string>();
+  const logBoxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     attachTaskListener();
@@ -139,6 +158,23 @@ export default function App(): JSX.Element {
       });
   }, [attachTaskListener, init, loadIssues, loadRepos]);
 
+  async function refreshSettingsStatus(): Promise<void> {
+    try {
+      const settings = await window.desktopApi.getSettings();
+      setHasAnthropicApiKey(settings.hasAnthropicApiKey);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '读取设置失败';
+      setSettingsMessage(message);
+    }
+  }
+
+  useEffect(() => {
+    if (!initialized || !snapshot.account) {
+      return;
+    }
+    void refreshSettingsStatus();
+  }, [initialized, snapshot.account]);
+
   useEffect(() => {
     if (!activeTaskId && snapshot.tasks.length > 0) {
       setActiveTaskId(snapshot.tasks[0].id);
@@ -150,6 +186,42 @@ export default function App(): JSX.Element {
     () => snapshot.tasks.find((task) => task.id === activeTaskId),
     [activeTaskId, snapshot.tasks]
   );
+  const renderedLogs = useMemo(() => {
+    if (!activeTask) {
+      return [];
+    }
+    const merged: Array<{ at: number; level: TaskEntity['logs'][number]['level']; text: string }> = [];
+    activeTask.logs.forEach((log) => {
+      const text = log.text.trim();
+      if (!text) {
+        return;
+      }
+      const prev = merged[merged.length - 1];
+      const canMerge =
+        prev &&
+        prev.level === log.level &&
+        log.at - prev.at <= 1200 &&
+        prev.text.length < 240 &&
+        text.length < 180 &&
+        !/\n/.test(prev.text) &&
+        !/\n/.test(text);
+      if (canMerge) {
+        prev.text = `${prev.text} ${text}`.replace(/\s+/g, ' ').trim();
+        prev.at = log.at;
+        return;
+      }
+      merged.push({ at: log.at, level: log.level, text });
+    });
+    return merged.slice(-500);
+  }, [activeTask]);
+
+  useEffect(() => {
+    const box = logBoxRef.current;
+    if (!box) {
+      return;
+    }
+    box.scrollTop = box.scrollHeight;
+  }, [activeTask?.id, renderedLogs.length]);
 
   const labelOptions = useMemo(() => {
     const set = new Set<string>();
@@ -234,11 +306,60 @@ export default function App(): JSX.Element {
       return;
     }
 
-    await enqueueTask({
-      repoFullName: snapshot.selectedRepo.fullName,
-      issueNumber: selectedIssue.number,
-      taskType: mode
-    });
+    try {
+      const task = await enqueueTask({
+        repoFullName: snapshot.selectedRepo.fullName,
+        issueNumber: selectedIssue.number,
+        taskType: mode
+      });
+      setActiveTaskId(task.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '任务创建失败';
+      setError(message);
+    }
+  }
+
+  async function handleOpenSettings(): Promise<void> {
+    setSettingsOpen(true);
+    setAnthropicKey('');
+    setSettingsMessage(undefined);
+    await refreshSettingsStatus();
+  }
+
+  async function handleSaveAnthropicKey(): Promise<void> {
+    if (!anthropicKey.trim()) {
+      setSettingsMessage('API Key 不能为空');
+      return;
+    }
+    setSavingSettings(true);
+    setSettingsMessage(undefined);
+    try {
+      await window.desktopApi.saveAnthropicApiKey(anthropicKey);
+      setHasAnthropicApiKey(true);
+      setAnthropicKey('');
+      setSettingsMessage('保存成功');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '保存失败';
+      setSettingsMessage(message);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  async function handleClearAnthropicKey(): Promise<void> {
+    setSavingSettings(true);
+    setSettingsMessage(undefined);
+    try {
+      await window.desktopApi.clearAnthropicApiKey();
+      setHasAnthropicApiKey(false);
+      setAnthropicKey('');
+      setSettingsMessage('已清除');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '清除失败';
+      setSettingsMessage(message);
+    } finally {
+      setSavingSettings(false);
+    }
   }
 
   async function handleConfirmCommit(task: TaskEntity): Promise<void> {
@@ -373,11 +494,41 @@ export default function App(): JSX.Element {
           <button disabled={loading || refreshing} onClick={() => void handleFilterRefresh()}>
             {refreshing ? '刷新中...' : '刷新 Issue'}
           </button>
+          <button className="ghost" onClick={() => void handleOpenSettings()}>
+            设置
+          </button>
           <button className="ghost" onClick={() => void logout()}>
             退出
           </button>
         </div>
       </header>
+
+      {settingsOpen ? (
+        <div className="settings-modal-mask" onClick={() => setSettingsOpen(false)}>
+          <div className="settings-modal" onClick={(event) => event.stopPropagation()}>
+            <h3>设置</h3>
+            <p className="muted">Anthropic API Key 状态：{hasAnthropicApiKey ? '已配置' : '未配置'}</p>
+            <input
+              type="password"
+              value={anthropicKey}
+              onChange={(event) => setAnthropicKey(event.target.value)}
+              placeholder="sk-ant-..."
+            />
+            {settingsMessage ? <p className="settings-msg">{settingsMessage}</p> : null}
+            <div className="settings-actions">
+              <button disabled={savingSettings} onClick={() => void handleSaveAnthropicKey()}>
+                {savingSettings ? '保存中...' : '保存 API Key'}
+              </button>
+              <button className="ghost" disabled={savingSettings} onClick={() => void handleClearAnthropicKey()}>
+                清除
+              </button>
+              <button className="ghost" onClick={() => setSettingsOpen(false)}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {error ? <div className="global-error">{error}</div> : null}
 
@@ -475,6 +626,16 @@ export default function App(): JSX.Element {
                   <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
                   <small>{formatTime(task.startedAt ?? Date.now())}</small>
                 </div>
+                {task.result?.error ? (
+                  <small className="task-error-hint" title={task.result.error}>
+                    {task.result.error}
+                  </small>
+                ) : null}
+                {task.logs.length > 0 ? (
+                  <small className="task-log-hint" title={task.logs[task.logs.length - 1]?.text}>
+                    {task.logs[task.logs.length - 1]?.text}
+                  </small>
+                ) : null}
               </button>
             ))}
           </div>
@@ -489,6 +650,10 @@ export default function App(): JSX.Element {
                   取消任务
                 </button>
               </div>
+
+              {activeTask.result?.error ? (
+                <div className="task-error-banner">{activeTask.result.error}</div>
+              ) : null}
 
               {activeTask.status === 'awaiting_commit' ? (
                 <section className="changes">
@@ -516,12 +681,20 @@ export default function App(): JSX.Element {
                 </a>
               ) : null}
 
-              <div className="log-box">
-                {activeTask.logs.map((log) => (
-                  <p key={`${log.at}-${log.text}`} className={`log-${log.level}`}>
-                    [{new Date(log.at).toLocaleTimeString()}] {log.text}
-                  </p>
-                ))}
+              <div className="log-box" ref={logBoxRef}>
+                {renderedLogs.length === 0 ? (
+                  <p className="log-empty">等待日志输出...</p>
+                ) : (
+                  renderedLogs.map((log) => (
+                    <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
+                      <span className={`log-badge log-badge-${log.level}`}>{logLevelLabel(log.level)}</span>
+                      <div className="log-main">
+                        <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
+                        <p className={`log-text log-${log.level}`}>{log.text}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           ) : (

@@ -17,6 +17,7 @@ import {
   getIssueDetail,
   splitRepoFullName
 } from '../github/service';
+import { resolveAnthropicApiKey } from '../settings/service';
 import { mainState } from '../state';
 
 interface RuntimeContext {
@@ -171,8 +172,17 @@ export class TaskManager {
     if (!task) {
       return;
     }
+    const now = Date.now();
+    const last = task.logs[task.logs.length - 1];
+    if (last && last.level === log.level && last.text === log.text && now - last.at < 3000) {
+      return;
+    }
 
-    const logs = [...task.logs, { ...log, at: Date.now() }].slice(-800);
+    if (process.env.BUILDBOT_DEBUG_TASK_LOGS === '1') {
+      console.info(`[BuildBot][TaskLog][${taskId}] ${log.level}: ${log.text}`);
+    }
+
+    const logs = [...task.logs, { ...log, at: now }].slice(-800);
     mainState.patchTask(taskId, { logs });
     this.emitTask(taskId);
   }
@@ -190,20 +200,21 @@ export class TaskManager {
     this.emitTask(taskId);
 
     try {
-      await checkClaudeReady();
+      const anthropicApiKey = await resolveAnthropicApiKey();
+      await checkClaudeReady(anthropicApiKey);
       const issue = await getIssueDetail(task.repoFullName, task.issueNumber);
 
       this.appendLog(taskId, { level: 'info', text: '开始检测/创建 Fork 仓库' });
       const forkContext = await ensureFork(task.repoFullName);
 
-      this.appendLog(taskId, { level: 'info', text: '开始创建任务分支' });
+      this.appendLog(taskId, { level: 'info', text: '开始准备任务分支' });
       const branchName = await createBranchForIssue(
         forkContext,
         task.issueNumber,
         task.issueTitle
       );
 
-      this.appendLog(taskId, { level: 'info', text: `已创建分支: ${branchName}` });
+      this.appendLog(taskId, { level: 'info', text: `已准备分支: ${branchName}` });
       const workspacePath = await cloneBranchWorkspace({
         context: forkContext,
         branchName,
@@ -221,6 +232,7 @@ export class TaskManager {
         cwd: workspacePath,
         prompt,
         taskType: task.taskType,
+        apiKey: anthropicApiKey,
         signal: abortController.signal,
         onLog: (log) => this.appendLog(taskId, log)
       });

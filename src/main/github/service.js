@@ -166,6 +166,119 @@ export function buildBranchName(issueNumber, issueTitle) {
     const base = `gitagent/issue-${issueNumber}-${slug || 'task'}`;
     return base.slice(0, 60);
 }
+const BRANCH_MAX_LENGTH = 60;
+function isRefAlreadyExistsError(error) {
+    if (!error || typeof error !== 'object') {
+        return false;
+    }
+    const maybe = error;
+    return (maybe.status === 422 &&
+        typeof maybe.message === 'string' &&
+        maybe.message.toLowerCase().includes('reference already exists'));
+}
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function parseIssueBranch(baseName, branchName) {
+    if (branchName === baseName) {
+        return { name: branchName, revision: 1 };
+    }
+    const revisionMatch = branchName.match(new RegExp(`^${escapeRegExp(baseName)}-r(\\d+)$`));
+    if (revisionMatch) {
+        const revision = Number(revisionMatch[1]);
+        if (Number.isFinite(revision) && revision > 1) {
+            return { name: branchName, revision };
+        }
+    }
+    if (branchName.startsWith(`${baseName}-`)) {
+        // Legacy branch naming from older releases.
+        return { name: branchName };
+    }
+    return undefined;
+}
+function buildRevisionBranchName(baseName, revision) {
+    if (revision <= 1) {
+        return baseName;
+    }
+    const suffix = `-r${revision}`;
+    const maxBaseLength = BRANCH_MAX_LENGTH - suffix.length;
+    const trimmed = baseName.slice(0, Math.max(1, maxBaseLength)).replace(/-+$/g, '');
+    return `${trimmed}${suffix}`;
+}
+function sortIssueBranches(branches) {
+    return [...branches].sort((a, b) => {
+        const aRevision = a.revision ?? 0;
+        const bRevision = b.revision ?? 0;
+        if (aRevision !== bRevision) {
+            return bRevision - aRevision;
+        }
+        return b.name.localeCompare(a.name);
+    });
+}
+async function listIssueBranches(context, baseName) {
+    const octokit = getOctokit();
+    const { data } = await octokit.rest.git.listMatchingRefs({
+        owner: context.fork.owner,
+        repo: context.fork.repo,
+        ref: `heads/${baseName}`
+    });
+    const map = new Map();
+    data.forEach((item) => {
+        if (!item.ref.startsWith('refs/heads/')) {
+            return;
+        }
+        const name = item.ref.replace(/^refs\/heads\//, '');
+        const parsed = parseIssueBranch(baseName, name);
+        if (!parsed) {
+            return;
+        }
+        map.set(parsed.name, parsed);
+    });
+    return sortIssueBranches(Array.from(map.values()));
+}
+async function hasOpenPullRequestForBranch(context, branchName) {
+    const octokit = getOctokit();
+    const { data } = await octokit.rest.pulls.list({
+        owner: context.upstream.owner,
+        repo: context.upstream.repo,
+        state: 'open',
+        head: `${context.fork.owner}:${branchName}`,
+        base: context.defaultBranch,
+        per_page: 1
+    });
+    return data.length > 0;
+}
+async function hasAnyPullRequestForBranch(context, branchName) {
+    const octokit = getOctokit();
+    const { data } = await octokit.rest.pulls.list({
+        owner: context.upstream.owner,
+        repo: context.upstream.repo,
+        state: 'all',
+        head: `${context.fork.owner}:${branchName}`,
+        base: context.defaultBranch,
+        per_page: 1
+    });
+    return data.length > 0;
+}
+async function createBranchRef(context, branchName, commitSha) {
+    const octokit = getOctokit();
+    try {
+        await octokit.rest.git.createRef({
+            owner: context.fork.owner,
+            repo: context.fork.repo,
+            ref: `refs/heads/${branchName}`,
+            sha: commitSha
+        });
+        return true;
+    }
+    catch (error) {
+        if (isRefAlreadyExistsError(error)) {
+            return false;
+        }
+        const message = error instanceof Error ? error.message : '创建分支失败，请检查仓库权限与默认分支配置';
+        throw new Error(message);
+    }
+}
 export async function createBranchForIssue(context, issueNumber, issueTitle) {
     const octokit = getOctokit();
     const baseBranch = context.defaultBranch;
@@ -174,24 +287,36 @@ export async function createBranchForIssue(context, issueNumber, issueTitle) {
         repo: context.fork.repo,
         branch: baseBranch
     });
-    const originalName = buildBranchName(issueNumber, issueTitle);
-    let branchName = originalName;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-            await octokit.rest.git.createRef({
-                owner: context.fork.owner,
-                repo: context.fork.repo,
-                ref: `refs/heads/${branchName}`,
-                sha: branchData.commit.sha
-            });
-            return branchName;
+    const baseName = buildBranchName(issueNumber, issueTitle);
+    const existingBranches = await listIssueBranches(context, baseName);
+    // 1) Reuse the branch with an open PR first.
+    for (const branch of existingBranches) {
+        if (await hasOpenPullRequestForBranch(context, branch.name)) {
+            return branch.name;
         }
-        catch (error) {
-            const suffix = new Date()
-                .toISOString()
-                .replace(/[-:TZ.]/g, '')
-                .slice(0, 12);
-            branchName = `${originalName}-${suffix}`.slice(0, 60);
+    }
+    // 2) Reuse branches that have never opened a PR (likely ongoing WIP).
+    for (const branch of existingBranches) {
+        if (!(await hasAnyPullRequestForBranch(context, branch.name))) {
+            return branch.name;
+        }
+    }
+    // 3) No reusable branch, create a new revision branch.
+    if (existingBranches.length === 0) {
+        const created = await createBranchRef(context, baseName, branchData.commit.sha);
+        if (created) {
+            return baseName;
+        }
+    }
+    const maxRevision = existingBranches.reduce((max, branch) => {
+        const revision = branch.revision ?? 1;
+        return Math.max(max, revision);
+    }, 1);
+    for (let revision = maxRevision + 1; revision <= maxRevision + 10; revision += 1) {
+        const branchName = buildRevisionBranchName(baseName, revision);
+        const created = await createBranchRef(context, branchName, branchData.commit.sha);
+        if (created) {
+            return branchName;
         }
     }
     throw new Error('创建分支失败，请稍后重试');
