@@ -144,6 +144,7 @@ export default function App(): JSX.Element {
   const [autoModeCountdown, setAutoModeCountdown] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string>();
+  const [settingsTab, setSettingsTab] = useState<'api' | 'auto' | 'account'>('api');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
   const logBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -486,10 +487,6 @@ export default function App(): JSX.Element {
     }
   }
 
-  async function handleSaveAutoModeSettings(): Promise<void> {
-    await persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true);
-  }
-
   async function handleQuickToggleAutoMode(): Promise<void> {
     setError(undefined);
     await persistAutoModeSettings(!autoModeEnabled, autoModePollIntervalSec, false);
@@ -650,67 +647,127 @@ export default function App(): JSX.Element {
 
       {settingsOpen ? (
         <div className="settings-modal-mask" onClick={() => setSettingsOpen(false)}>
-          <div className="settings-modal" onClick={(event) => event.stopPropagation()}>
-            <h3>设置</h3>
-            <p className="muted">Anthropic API Key 状态：{hasAnthropicApiKey ? '已配置' : '未配置'}</p>
-            <input
-              type="password"
-              value={anthropicKey}
-              onChange={(event) => setAnthropicKey(event.target.value)}
-              placeholder="sk-ant-..."
-            />
-            <section className="auto-mode-section">
-              <div className="auto-mode-head">
-                <strong>自动模式</strong>
-                <label className="toggle-line">
-                  <input
-                    type="checkbox"
-                    checked={autoModeEnabled}
-                    onChange={(event) => setAutoModeEnabled(event.target.checked)}
-                  />
-                  启用
-                </label>
-              </div>
-              <p className="muted">
-                开启后会定时拉取当前仓库 Open Issue，自动触发开发任务，并进入右侧任务队列串行执行。
-              </p>
-              <label className="auto-mode-interval">
-                轮询间隔（秒）
-                <input
-                  type="number"
-                  min={30}
-                  max={3600}
-                  step={10}
-                  value={autoModePollIntervalSec}
-                  onChange={(event) => {
-                    const next = event.target.valueAsNumber;
-                    setAutoModePollIntervalSec(Number.isFinite(next) ? next : 180);
-                  }}
-                />
-              </label>
-              <button
-                className="ghost"
-                disabled={savingSettings}
-                onClick={() => void handleSaveAutoModeSettings()}
-              >
-                {savingSettings ? '保存中...' : '保存自动模式'}
-              </button>
-            </section>
-            {settingsMessage ? <p className="settings-msg">{settingsMessage}</p> : null}
-            <div className="settings-actions">
-              <button disabled={savingSettings} onClick={() => void handleSaveAnthropicKey()}>
-                {savingSettings ? '保存中...' : '保存 API Key'}
-              </button>
-              <button className="ghost" disabled={savingSettings} onClick={() => void handleClearAnthropicKey()}>
-                清除
-              </button>
-              <button className="ghost settings-logout" onClick={() => void logout()}>
-                退出登录
-              </button>
-              <button className="ghost" onClick={() => setSettingsOpen(false)}>
+          <div className="settings-modal settings-modal-layout" onClick={(event) => event.stopPropagation()}>
+            <aside className="settings-sidebar">
+              <h3>设置</h3>
+              <nav className="settings-nav">
+                <button
+                  className={`settings-nav-btn ${settingsTab === 'api' ? 'is-active' : ''}`}
+                  onClick={() => setSettingsTab('api')}
+                >
+                  API 配置
+                </button>
+                <button
+                  className={`settings-nav-btn ${settingsTab === 'auto' ? 'is-active' : ''}`}
+                  onClick={() => setSettingsTab('auto')}
+                >
+                  自动模式
+                </button>
+                <button
+                  className={`settings-nav-btn ${settingsTab === 'account' ? 'is-active' : ''}`}
+                  onClick={() => setSettingsTab('account')}
+                >
+                  账户
+                </button>
+              </nav>
+              <button className="ghost settings-close-btn" onClick={() => setSettingsOpen(false)}>
                 关闭
               </button>
-            </div>
+            </aside>
+            <main className="settings-content">
+              {settingsTab === 'api' ? (
+                <section className="settings-section">
+                  <h4>Anthropic API Key</h4>
+                  <p className="muted">
+                    当前状态：{hasAnthropicApiKey ? '已配置' : '未配置'}
+                  </p>
+                  <input
+                    type="password"
+                    value={anthropicKey}
+                    onChange={(event) => setAnthropicKey(event.target.value)}
+                    placeholder="sk-ant-..."
+                  />
+                  <div className="settings-section-actions">
+                    <button disabled={savingSettings || !anthropicKey.trim()} onClick={() => void handleSaveAnthropicKey()}>
+                      {savingSettings ? '保存中...' : '保存'}
+                    </button>
+                    <button className="ghost" disabled={savingSettings || !hasAnthropicApiKey} onClick={() => void handleClearAnthropicKey()}>
+                      清除
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+              {settingsTab === 'auto' ? (
+                <section className="settings-section">
+                  <h4>自动模式</h4>
+                  <p className="muted">
+                    开启后会定时拉取当前仓库 Open Issue，自动触发开发任务，并进入右侧任务队列串行执行。
+                  </p>
+                  <div className="settings-toggle-row">
+                    <label className="toggle-line">
+                      <input
+                        type="checkbox"
+                        checked={autoModeEnabled}
+                        onChange={(event) => {
+                          setAutoModeEnabled(event.target.checked);
+                          void persistAutoModeSettings(event.target.checked, autoModePollIntervalSec, true);
+                        }}
+                      />
+                      启用自动模式
+                    </label>
+                    <span className={`settings-status-badge ${autoModeEnabled ? 'is-on' : 'is-off'}`}>
+                      {autoModeEnabled ? '已开启' : '已关闭'}
+                    </span>
+                  </div>
+                  <label className="settings-input-group">
+                    轮询间隔（秒）
+                    <div className="settings-input-row">
+                      <input
+                        type="number"
+                        min={30}
+                        max={3600}
+                        step={10}
+                        value={autoModePollIntervalSec}
+                        onChange={(event) => {
+                          const next = event.target.valueAsNumber;
+                          const value = Number.isFinite(next) ? next : 180;
+                          setAutoModePollIntervalSec(value);
+                        }}
+                        onBlur={() => {
+                          void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true);
+                        }}
+                      />
+                      <button
+                        className="ghost"
+                        disabled={savingSettings}
+                        onClick={() => void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true)}
+                      >
+                        应用
+                      </button>
+                    </div>
+                    <small className="muted">范围：30 ~ 3600 秒</small>
+                  </label>
+                </section>
+              ) : null}
+              {settingsTab === 'account' ? (
+                <section className="settings-section">
+                  <h4>账户管理</h4>
+                  <p className="muted">
+                    当前登录账户：{snapshot.account?.login ?? '未知'}
+                  </p>
+                  <div className="settings-section-actions">
+                    <button className="ghost settings-logout" onClick={() => { void logout(); setSettingsOpen(false); }}>
+                      退出登录
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+              {settingsMessage ? (
+                <p className={`settings-msg ${settingsMessage.includes('失败') || settingsMessage.includes('错误') ? 'is-error' : 'is-success'}`}>
+                  {settingsMessage}
+                </p>
+              ) : null}
+            </main>
           </div>
         </div>
       ) : null}

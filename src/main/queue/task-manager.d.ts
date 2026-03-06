@@ -14,6 +14,7 @@ export declare class TaskManager {
     private emitTask;
     private cleanupTaskWorkspace;
     private scheduleWorkspaceCleanup;
+    private moveTaskToHumanConfirmation;
     private appendLog;
     private executeTask;
     private buildPrompt;

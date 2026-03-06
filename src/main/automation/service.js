@@ -1,6 +1,7 @@
 import { listIssues } from '../github/service';
 import { getAutoModeSettings, saveAutoModeSettings } from '../settings/service';
 import { mainState } from '../state';
+import { HUMAN_CONFIRMATION_LABEL } from '../security/issue-guard';
 const DEFAULT_AUTO_MODE_SETTINGS = {
     enabled: false,
     pollIntervalSec: 180
@@ -76,6 +77,9 @@ export class AutoModeService {
                     break;
                 }
                 if (existingIssueNumbers.has(issue.number)) {
+                    continue;
+                }
+                if (issue.labels.some((label) => label.name === HUMAN_CONFIRMATION_LABEL)) {
                     continue;
                 }
                 const taskType = inferTaskType(issue);

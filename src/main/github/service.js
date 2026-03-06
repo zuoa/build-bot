@@ -1,6 +1,8 @@
 import { getAccount, getOctokit } from './client';
 const FORK_TIMEOUT_MS = 60_000;
 const FORK_POLL_INTERVAL_MS = 3_000;
+const HUMAN_CONFIRMATION_LABEL_COLOR = 'd93f0b';
+const HUMAN_CONFIRMATION_LABEL_DESCRIPTION = 'Blocked by BuildBot until a human reviews it';
 export function splitRepoFullName(fullName) {
     const [owner, repo] = fullName.split('/');
     if (!owner || !repo) {
@@ -104,6 +106,47 @@ export async function getIssueDetail(repoFullName, issueNumber) {
             createdAt: comment.created_at
         }))
     };
+}
+async function ensureLabelExists(repoFullName, name) {
+    const octokit = getOctokit();
+    const { owner, repo } = splitRepoFullName(repoFullName);
+    try {
+        await octokit.rest.issues.getLabel({ owner, repo, name });
+    }
+    catch (error) {
+        const maybe = error;
+        if (maybe.status !== 404) {
+            throw error;
+        }
+        await octokit.rest.issues.createLabel({
+            owner,
+            repo,
+            name,
+            color: HUMAN_CONFIRMATION_LABEL_COLOR,
+            description: HUMAN_CONFIRMATION_LABEL_DESCRIPTION
+        });
+    }
+}
+export async function addLabelToIssue(repoFullName, issueNumber, label) {
+    const octokit = getOctokit();
+    const { owner, repo } = splitRepoFullName(repoFullName);
+    await ensureLabelExists(repoFullName, label);
+    await octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        labels: [label]
+    });
+}
+export async function createIssueComment(repoFullName, issueNumber, body) {
+    const octokit = getOctokit();
+    const { owner, repo } = splitRepoFullName(repoFullName);
+    await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        body
+    });
 }
 async function waitForkReady(octokit, owner, repo) {
     const deadline = Date.now() + FORK_TIMEOUT_MS;
