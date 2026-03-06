@@ -1,7 +1,6 @@
 import type {
   AutoModeSettings,
   AppStateSnapshot,
-  ConfirmCommitInput,
   EnqueueTaskInput,
   IssueDetail,
   IssueFilter,
@@ -22,7 +21,6 @@ export interface DesktopApi {
   listIssues(filter: IssueFilter): Promise<void>;
   getIssueDetail(issueNumber: number): Promise<IssueDetail>;
   enqueueTask(input: EnqueueTaskInput): Promise<TaskEntity>;
-  confirmTaskCommit(input: ConfirmCommitInput): Promise<TaskEntity>;
   cancelTask(taskId: string): Promise<void>;
   onTaskUpdated(listener: (task: TaskEntity) => void): () => void;
 }
@@ -40,7 +38,6 @@ export const IPC_CHANNELS = {
   LIST_ISSUES: 'github:list-issues',
   GET_ISSUE_DETAIL: 'github:get-issue-detail',
   ENQUEUE_TASK: 'task:enqueue',
-  CONFIRM_TASK_COMMIT: 'task:confirm-commit',
   CANCEL_TASK: 'task:cancel',
   TASK_UPDATED: 'event:task-updated'
 } as const;

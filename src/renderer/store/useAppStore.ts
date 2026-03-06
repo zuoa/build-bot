@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type {
   AppStateSnapshot,
-  ConfirmCommitInput,
   EnqueueTaskInput,
   IssueDetail,
   IssueFilter,
@@ -26,7 +25,6 @@ interface AppStore {
   loadIssues: () => Promise<void>;
   loadIssueDetail: (issueNumber: number) => Promise<IssueDetail>;
   enqueueTask: (input: EnqueueTaskInput) => Promise<TaskEntity>;
-  confirmTaskCommit: (input: ConfirmCommitInput) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
 }
 
@@ -263,21 +261,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return task;
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '任务创建失败' });
-      throw error;
-    }
-  },
-
-  async confirmTaskCommit(input) {
-    try {
-      const task = await getApi().confirmTaskCommit(input);
-      set((state) => ({
-        snapshot: {
-          ...state.snapshot,
-          tasks: upsertTask(state.snapshot.tasks, task)
-        }
-      }));
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : '提交失败' });
       throw error;
     }
   },

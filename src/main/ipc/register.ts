@@ -1,11 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/api';
-import type {
-  AutoModeSettings,
-  ConfirmCommitInput,
-  EnqueueTaskInput,
-  IssueFilter
-} from '../../shared/types';
+import type { AutoModeSettings, EnqueueTaskInput, IssueFilter } from '../../shared/types';
 import { AutoModeService } from '../automation/service';
 import { bootstrapSessionFromKeychain, loginWithToken, logoutGithub } from '../github/client';
 import { getIssueDetail, getRepo, listIssues, listRepos } from '../github/service';
@@ -134,10 +129,6 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     const issue = await getIssueDetail(input.repoFullName, input.issueNumber);
     mainState.setSelectedIssue(issue);
     return taskManager.enqueue(input, issue.title);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.CONFIRM_TASK_COMMIT, async (_, input: ConfirmCommitInput) => {
-    return taskManager.confirmCommit(input);
   });
 
   ipcMain.handle(IPC_CHANNELS.CANCEL_TASK, async (_, taskId: string) => {

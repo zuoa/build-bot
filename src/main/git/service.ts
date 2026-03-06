@@ -7,6 +7,8 @@ import type { ForkContext } from '../github/service';
 
 const BASE_WORKSPACE = path.join(os.homedir(), 'gitagent-workspace');
 const MIN_REQUIRED_BYTES = 200 * 1024 * 1024;
+const WORKSPACE_RM_RETRIES = 8;
+const WORKSPACE_RM_RETRY_DELAY_MS = 250;
 
 function sanitizeFolderName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, '-');
@@ -111,5 +113,10 @@ export async function cleanupWorkspace(workspacePath?: string): Promise<void> {
   if (!workspacePath.startsWith(BASE_WORKSPACE)) {
     return;
   }
-  await rm(workspacePath, { recursive: true, force: true });
+  await rm(workspacePath, {
+    recursive: true,
+    force: true,
+    maxRetries: WORKSPACE_RM_RETRIES,
+    retryDelay: WORKSPACE_RM_RETRY_DELAY_MS
+  });
 }

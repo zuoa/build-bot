@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type DesktopApi } from '../shared/api';
 import type {
   AutoModeSettings,
-  ConfirmCommitInput,
   EnqueueTaskInput,
   IssueFilter,
   TaskEntity
@@ -51,9 +50,6 @@ const desktopApi: DesktopApi = {
   },
   enqueueTask(input: EnqueueTaskInput) {
     return ipcRenderer.invoke(IPC_CHANNELS.ENQUEUE_TASK, input);
-  },
-  confirmTaskCommit(input: ConfirmCommitInput) {
-    return ipcRenderer.invoke(IPC_CHANNELS.CONFIRM_TASK_COMMIT, input);
   },
   cancelTask(taskId: string) {
     return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_TASK, taskId);

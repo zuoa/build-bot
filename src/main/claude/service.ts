@@ -12,6 +12,8 @@ const STARTUP_SILENCE_MS = 65_000;
 const STARTUP_SILENCE_ERROR = 'CLAUDE_STARTUP_SILENT_TIMEOUT';
 const OUTPUT_IDLE_TIMEOUT_MS = 180_000;
 const OUTPUT_IDLE_TIMEOUT_ERROR = 'CLAUDE_OUTPUT_IDLE_TIMEOUT';
+const REPETITIVE_OUTPUT_LIMIT = 6;
+const REPETITIVE_OUTPUT_ERROR = 'CLAUDE_REPETITIVE_OUTPUT_TIMEOUT';
 const PTY_UNSUPPORTED_ERROR = 'CLAUDE_PTY_UNSUPPORTED';
 
 interface ClaudeCapabilities {
@@ -105,6 +107,22 @@ function normalizeLine(line: string): string | undefined {
     .replace(/[\x00-\x1F\x7F]/g, '')
     .trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeProgressText(text: string): string {
+  return stripAnsi(text)
+    .replace(/[`"'“”‘’]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isSimilarProgressText(a: string, b: string): boolean {
+  if (!a || !b) {
+    return false;
+  }
+
+  return a === b || a.includes(b) || b.includes(a);
 }
 
 function createLineDecoder(onLine: (line: string) => void): {
@@ -283,7 +301,7 @@ function buildClaudeArgs(params: {
   const args = ['--dangerously-skip-permissions', '-p'];
 
   if (params.useStreamJson) {
-    args.push('--verbose', '--output-format', 'stream-json', '--include-partial-messages');
+    args.push('--verbose', '--output-format', 'stream-json');
   }
 
   if (params.leanStartup) {
@@ -361,9 +379,11 @@ async function runClaudeTaskOnce(
     }
 
     const startedAt = Date.now();
-    let lastOutputAt = Date.now();
+    let lastClaudeOutputAt = Date.now();
     let hasAnyOutput = false;
     let ptyUnsupported = false;
+    let repeatedProgressCount = 0;
+    let lastProgressText: string | undefined;
 
     params.onLog({
       level: 'thinking',
@@ -376,11 +396,37 @@ async function runClaudeTaskOnce(
 
     const touchOutput = () => {
       hasAnyOutput = true;
-      lastOutputAt = Date.now();
+      lastClaudeOutputAt = Date.now();
+    };
+
+    const detectRepetitiveOutput = (text: string): boolean => {
+      const normalized = normalizeProgressText(text);
+      if (!normalized || normalized.length < 8) {
+        return false;
+      }
+
+      if (lastProgressText && isSimilarProgressText(lastProgressText, normalized)) {
+        repeatedProgressCount += 1;
+      } else {
+        lastProgressText = normalized;
+        repeatedProgressCount = 1;
+      }
+
+      if (repeatedProgressCount < REPETITIVE_OUTPUT_LIMIT) {
+        return false;
+      }
+
+      params.onLog({
+        level: 'error',
+        text: 'Claude 连续输出重复内容且没有继续推进，已判定为卡住并终止本次执行'
+      });
+      child.kill('SIGKILL');
+      reject(new Error(REPETITIVE_OUTPUT_ERROR));
+      return true;
     };
 
     const heartbeatTimer = setInterval(() => {
-      if (Date.now() - lastOutputAt < HEARTBEAT_MS) {
+      if (Date.now() - lastClaudeOutputAt < HEARTBEAT_MS) {
         return;
       }
       const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
@@ -388,21 +434,28 @@ async function runClaudeTaskOnce(
         level: 'thinking',
         text: `Claude Code 执行中（已运行 ${elapsedSec}s），仍在等待新输出...`
       });
-      lastOutputAt = Date.now();
     }, HEARTBEAT_MS);
 
     const startupSilenceTimer = setTimeout(() => {
       if (hasAnyOutput) {
         return;
       }
+      params.onLog({
+        level: 'error',
+        text: 'Claude 启动超过 65s 仍无任何输出，正在终止本次执行'
+      });
       child.kill('SIGKILL');
       reject(new Error(STARTUP_SILENCE_ERROR));
     }, STARTUP_SILENCE_MS);
 
     const idleOutputTimer = setInterval(() => {
-      if (Date.now() - lastOutputAt < OUTPUT_IDLE_TIMEOUT_MS) {
+      if (Date.now() - lastClaudeOutputAt < OUTPUT_IDLE_TIMEOUT_MS) {
         return;
       }
+      params.onLog({
+        level: 'error',
+        text: 'Claude 超过 180s 没有任何新输出，已判定为卡住并终止本次执行'
+      });
       child.kill('SIGKILL');
       reject(new Error(OUTPUT_IDLE_TIMEOUT_ERROR));
     }, HEARTBEAT_MS);
@@ -434,12 +487,18 @@ async function runClaudeTaskOnce(
         if (parsed.recognized) {
           if (parsed.log) {
             touchOutput();
+            if (detectRepetitiveOutput(parsed.log.text)) {
+              return;
+            }
             params.onLog(parsed.log);
           }
           return;
         }
       }
       touchOutput();
+      if (detectRepetitiveOutput(line)) {
+        return;
+      }
       params.onLog({
         level: /thinking|analysis/i.test(line) ? 'thinking' : 'info',
         text: line
@@ -456,6 +515,9 @@ async function runClaudeTaskOnce(
         return;
       }
       touchOutput();
+      if (detectRepetitiveOutput(line)) {
+        return;
+      }
       params.onLog({ level: 'error', text: line });
     });
 
@@ -528,7 +590,11 @@ export async function runClaudeTask(params: {
     await runWithPtyFallback(false);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message !== STARTUP_SILENCE_ERROR && message !== OUTPUT_IDLE_TIMEOUT_ERROR) {
+    if (
+      message !== STARTUP_SILENCE_ERROR &&
+      message !== OUTPUT_IDLE_TIMEOUT_ERROR &&
+      message !== REPETITIVE_OUTPUT_ERROR
+    ) {
       throw error;
     }
 
@@ -537,7 +603,9 @@ export async function runClaudeTask(params: {
       text:
         message === STARTUP_SILENCE_ERROR
           ? 'Claude 启动超过 65s 无输出，正在切换精简模式并重试...'
-          : 'Claude 长时间无新输出，正在切换精简模式并重试...'
+          : message === OUTPUT_IDLE_TIMEOUT_ERROR
+            ? 'Claude 长时间无新输出，正在切换精简模式并重试...'
+            : 'Claude 陷入重复输出循环，正在切换精简模式并重试...'
     });
 
     try {
@@ -545,9 +613,13 @@ export async function runClaudeTask(params: {
       return;
     } catch (retryError) {
       const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
-      if (retryMessage === STARTUP_SILENCE_ERROR || retryMessage === OUTPUT_IDLE_TIMEOUT_ERROR) {
+      if (
+        retryMessage === STARTUP_SILENCE_ERROR ||
+        retryMessage === OUTPUT_IDLE_TIMEOUT_ERROR ||
+        retryMessage === REPETITIVE_OUTPUT_ERROR
+      ) {
         throw new Error(
-          'Claude 长时间无输出，请检查 Claude CLI 配置/网络，或在设置页改用 API Key 后重试'
+          'Claude 执行卡住且重试后仍未恢复，请检查 Claude CLI 配置/网络，或在设置页改用 API Key 后重试'
         );
       }
       throw retryError;

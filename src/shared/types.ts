@@ -61,7 +61,6 @@ export interface AutoModeSettings {
 export type TaskStatus =
   | 'pending'
   | 'running'
-  | 'awaiting_commit'
   | 'completed'
   | 'failed'
   | 'cancelled';
@@ -105,11 +104,6 @@ export interface EnqueueTaskInput {
   issueNumber: number;
   taskType: TaskType;
   customGuidelines?: string;
-}
-
-export interface ConfirmCommitInput {
-  taskId: string;
-  selectedFiles: string[];
 }
 
 export interface AppStateSnapshot {
