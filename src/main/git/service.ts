@@ -28,6 +28,15 @@ function buildAuthedCloneUrl(context: ForkContext): string {
   return `https://x-access-token:${encodedToken}@github.com/${context.fork.owner}/${context.fork.repo}.git`;
 }
 
+async function removeWorkspaceDir(workspacePath: string): Promise<void> {
+  await rm(workspacePath, {
+    recursive: true,
+    force: true,
+    maxRetries: WORKSPACE_RM_RETRIES,
+    retryDelay: WORKSPACE_RM_RETRY_DELAY_MS
+  });
+}
+
 export async function cloneBranchWorkspace(params: {
   context: ForkContext;
   branchName: string;
@@ -38,7 +47,7 @@ export async function cloneBranchWorkspace(params: {
   const workspaceName = `${sanitizeFolderName(params.context.fork.repo)}-${params.issueNumber}`;
   const workspacePath = path.join(BASE_WORKSPACE, workspaceName);
 
-  await rm(workspacePath, { recursive: true, force: true });
+  await removeWorkspaceDir(workspacePath);
 
   const git = simpleGit();
   await git.clone(buildAuthedCloneUrl(params.context), workspacePath, [
@@ -113,10 +122,5 @@ export async function cleanupWorkspace(workspacePath?: string): Promise<void> {
   if (!workspacePath.startsWith(BASE_WORKSPACE)) {
     return;
   }
-  await rm(workspacePath, {
-    recursive: true,
-    force: true,
-    maxRetries: WORKSPACE_RM_RETRIES,
-    retryDelay: WORKSPACE_RM_RETRY_DELAY_MS
-  });
+  await removeWorkspaceDir(workspacePath);
 }

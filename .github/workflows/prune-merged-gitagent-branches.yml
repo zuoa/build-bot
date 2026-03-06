@@ -1,0 +1,46 @@
+name: Prune Merged Gitagent Branches
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete merged gitagent branches
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin --prune
+
+          branches="$(
+            git branch -r --merged origin/master \
+              | sed 's/^[[:space:]]*//' \
+              | grep '^origin/gitagent/' \
+              | sed 's#^origin/##' || true
+          )"
+
+          if [ -z "$branches" ]; then
+            echo "No merged gitagent branches to delete."
+            exit 0
+          fi
+
+          printf '%s\n' "$branches" | while IFS= read -r branch; do
+            if [ -n "$branch" ]; then
+              echo "Deleting merged branch: $branch"
+              git push origin --delete "$branch"
+            fi
+          done

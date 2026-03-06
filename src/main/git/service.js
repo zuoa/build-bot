@@ -4,6 +4,8 @@ import path from 'node:path';
 import { simpleGit } from 'simple-git';
 const BASE_WORKSPACE = path.join(os.homedir(), 'gitagent-workspace');
 const MIN_REQUIRED_BYTES = 200 * 1024 * 1024;
+const WORKSPACE_RM_RETRIES = 8;
+const WORKSPACE_RM_RETRY_DELAY_MS = 250;
 function sanitizeFolderName(value) {
     return value.replace(/[^a-zA-Z0-9._-]/g, '-');
 }
@@ -19,11 +21,19 @@ function buildAuthedCloneUrl(context) {
     const encodedToken = encodeURIComponent(context.token);
     return `https://x-access-token:${encodedToken}@github.com/${context.fork.owner}/${context.fork.repo}.git`;
 }
+async function removeWorkspaceDir(workspacePath) {
+    await rm(workspacePath, {
+        recursive: true,
+        force: true,
+        maxRetries: WORKSPACE_RM_RETRIES,
+        retryDelay: WORKSPACE_RM_RETRY_DELAY_MS
+    });
+}
 export async function cloneBranchWorkspace(params) {
     await assertDiskAvailable();
     const workspaceName = `${sanitizeFolderName(params.context.fork.repo)}-${params.issueNumber}`;
     const workspacePath = path.join(BASE_WORKSPACE, workspaceName);
-    await rm(workspacePath, { recursive: true, force: true });
+    await removeWorkspaceDir(workspacePath);
     const git = simpleGit();
     await git.clone(buildAuthedCloneUrl(params.context), workspacePath, [
         '--branch',
@@ -75,5 +85,5 @@ export async function cleanupWorkspace(workspacePath) {
     if (!workspacePath.startsWith(BASE_WORKSPACE)) {
         return;
     }
-    await rm(workspacePath, { recursive: true, force: true });
+    await removeWorkspaceDir(workspacePath);
 }

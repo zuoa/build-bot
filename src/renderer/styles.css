@@ -224,7 +224,7 @@ button.ghost:hover {
   position: relative;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   padding: 30px 12px 12px;
 }
@@ -248,7 +248,6 @@ button.ghost:hover {
 }
 
 .topbar,
-.control-dock,
 .panel {
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -377,32 +376,6 @@ button.ghost:hover {
   color: var(--ink-soft);
 }
 
-.control-dock {
-  padding: 12px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.control-label {
-  display: block;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.11em;
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-
-.control-row {
-  min-width: 0;
-}
-
 .repo-jump-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 80px;
@@ -419,7 +392,13 @@ button.ghost:hover {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.content-stack {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -441,6 +420,78 @@ button.ghost:hover {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.panel-head-main {
+  margin-bottom: 12px;
+}
+
+.panel-head-stack {
+  align-items: flex-start;
+  gap: 10px;
+  flex-direction: column;
+}
+
+.panel-head-copy p {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sidebar-switch {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.sidebar-switch-btn {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: none;
+}
+
+.sidebar-switch-btn:hover {
+  background: color-mix(in srgb, var(--surface) 88%, var(--line));
+  border-color: transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.sidebar-switch-btn.is-active {
+  background: #111111;
+  border-color: #111111;
+  color: #ffffff;
+}
+
+.sidebar-switch-btn span {
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  background: rgba(17, 24, 39, 0.08);
+}
+
+.sidebar-switch-btn.is-active span {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .panel-count {
@@ -645,14 +696,100 @@ button.ghost:hover {
   line-height: 1.5;
 }
 
-.task-panel {
+.task-workspace {
+  min-height: 0;
   display: grid;
-  grid-template-rows: auto 200px 1fr;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.task-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
 }
 
 .task-panel-main {
-  grid-template-rows: auto minmax(120px, 0.35fr) minmax(200px, 1fr);
+  min-height: 0;
+}
+
+.task-queue-column {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.issue-sidebar {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.issue-sidebar-filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.issue-sidebar-list {
+  padding-right: 1px;
+}
+
+.task-section-label {
+  padding: 4px 2px 0;
+}
+
+.task-section-label span {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.task-section-label small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-soft);
+}
+
+.task-rail {
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.task-rail-shell {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(244, 247, 251, 0.98), rgba(237, 242, 247, 0.98)),
+    var(--surface-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.task-rail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.task-rail-header h4 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .task-detail-main {
@@ -675,10 +812,11 @@ button.ghost:hover {
   display: grid;
   grid-template-rows: auto auto 1fr;
   gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-soft);
-  padding: 10px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.64);
+  padding: 12px;
+  backdrop-filter: blur(8px);
 }
 
 .task-meta {
@@ -691,6 +829,7 @@ button.ghost:hover {
 .task-meta h4 {
   margin: 0;
   font-size: 14px;
+  line-height: 1.35;
 }
 
 .task-error-banner {
@@ -967,32 +1106,45 @@ button.ghost:hover {
   margin-top: 2px;
 }
 
+.empty-state {
+  min-height: 220px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at top left, rgba(17, 24, 39, 0.04), transparent 40%),
+    var(--surface-soft);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 24px;
+}
+
+.empty-state-rail {
+  min-height: 0;
+}
+
+.empty-state strong {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.empty-state p {
+  max-width: 420px;
+  margin: 0;
+}
+
 .empty,
 .muted {
   color: var(--ink-soft);
 }
 
 @media (max-width: 1460px) {
-  .workspace {
-    grid-template-columns: 260px minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 1240px) {
   .topbar-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .control-dock {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace {
-    grid-template-columns: 260px minmax(0, 1fr);
-  }
-
-  .task-panel-main {
-    grid-template-rows: auto 160px minmax(200px, 1fr);
   }
 }
 
@@ -1026,13 +1178,20 @@ button.ghost:hover {
     grid-column: 1 / -1;
   }
 
-  .workspace {
+  .sidebar-switch {
+    width: 100%;
+  }
+
+  .task-workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: 280px minmax(400px, 1fr);
+  }
+
+  .task-rail {
+    min-height: 420px;
   }
 
   .task-panel-main {
-    grid-template-rows: auto 140px minmax(200px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .issue-modal {
