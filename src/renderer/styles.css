@@ -176,6 +176,11 @@ button.ghost {
   padding: 14px;
 }
 
+/* macOS 标题栏红绿灯按钮预留空间 */
+.shell.is-mac {
+  padding-top: 38px;
+}
+
 .topbar {
   display: flex;
   align-items: center;
