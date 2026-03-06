@@ -1092,11 +1092,22 @@ button.ghost:hover {
   min-height: 0;
   overflow: auto;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid #1f2937;
   border-radius: 8px;
   background: #111827;
   padding: 8px;
+  position: relative;
+}
+
+.log-copy-btn {
+  position: sticky;
+  top: 0;
+  justify-self: end;
+  z-index: 1;
+  margin-bottom: -4px;
+  padding: 4px;
+  border-radius: 4px;
 }
 
 .log-empty {
@@ -1107,9 +1118,14 @@ button.ghost:hover {
 
 .log-row {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   align-items: start;
+}
+
+.log-row:has(.log-badge) {
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
 }
 
 .log-badge {
@@ -1125,51 +1141,56 @@ button.ghost:hover {
 }
 
 .log-badge-info {
-  color: #d1d5db;
-  border-color: rgba(209, 213, 219, 0.3);
+  display: none;
 }
 
 .log-badge-thinking {
-  color: #93c5fd;
-  border-color: rgba(147, 197, 253, 0.3);
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.3);
+  background: rgba(167, 139, 250, 0.1);
 }
 
 .log-badge-error {
   color: #fca5a5;
   border-color: rgba(252, 165, 165, 0.3);
+  background: rgba(252, 165, 165, 0.1);
 }
 
 .log-badge-success {
   color: #86efac;
   border-color: rgba(134, 239, 172, 0.3);
+  background: rgba(134, 239, 172, 0.1);
 }
 
 .log-main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .log-time {
   display: inline-block;
-  margin-bottom: 2px;
-  color: #94a3b8;
-  font-size: 11px;
+  color: #6b7280;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .log-text {
   margin: 0;
   font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .log-info {
-  color: #e5e7eb;
+  color: #d1d5db;
 }
 
 .log-thinking {
-  color: #93c5fd;
+  color: #c4b5fd;
 }
 
 .log-error {
