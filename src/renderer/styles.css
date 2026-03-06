@@ -968,6 +968,22 @@ button.ghost:hover {
   letter-spacing: -0.03em;
 }
 
+.task-rail-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-timer {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.05);
+}
+
 .task-detail-main {
   grid-template-rows: auto auto auto 1fr;
 }

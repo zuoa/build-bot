@@ -36,6 +36,20 @@ function formatTime(value?: number | string): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 0) return '0s';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) {
+    return `${h}h ${m}m ${s}s`;
+  }
+  if (m > 0) {
+    return `${m}m ${s}s`;
+  }
+  return `${s}s`;
+}
+
 function statusLabel(status: TaskEntity['status']): string {
   switch (status) {
     case 'pending':
@@ -169,6 +183,7 @@ export default function App(): JSX.Element {
   const [settingsMessage, setSettingsMessage] = useState<string>();
   const [settingsTab, setSettingsTab] = useState<'agent' | 'auto' | 'account'>('agent');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
+  const [timerNow, setTimerNow] = useState<number>(Date.now());
   const logBoxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -248,6 +263,19 @@ export default function App(): JSX.Element {
     () => snapshot.tasks.find((task) => task.id === activeTaskId),
     [activeTaskId, snapshot.tasks]
   );
+
+  // 任务计时器
+  useEffect(() => {
+    if (!activeTask || activeTask.status !== 'running' || !activeTask.startedAt) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTimerNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeTask?.id, activeTask?.status, activeTask?.startedAt]);
 
   const renderedLogs = useMemo(() => {
     if (!activeTask) {
@@ -1019,9 +1047,22 @@ export default function App(): JSX.Element {
                       <p className="eyebrow">Run Console</p>
                       <h4>{activeTask ? `#${activeTask.issueNumber}` : '等待任务'}</h4>
                     </div>
-                    {activeTask ? (
-                      <span className={statusClass(activeTask.status)}>{statusLabel(activeTask.status)}</span>
-                    ) : null}
+                    <div className="task-rail-header-right">
+                      {activeTask ? (
+                        <span className={statusClass(activeTask.status)}>{statusLabel(activeTask.status)}</span>
+                      ) : null}
+                      {activeTask && activeTask.startedAt ? (
+                        <span className="task-timer">
+                          {formatDuration(
+                            activeTask.status === 'running'
+                              ? Math.floor((timerNow - activeTask.startedAt) / 1000)
+                              : activeTask.finishedAt
+                                ? Math.floor((activeTask.finishedAt - activeTask.startedAt) / 1000)
+                                : Math.floor((Date.now() - activeTask.startedAt) / 1000)
+                          )}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   {activeTask ? (
