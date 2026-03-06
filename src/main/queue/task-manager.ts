@@ -7,7 +7,7 @@ import type {
   TaskLog
 } from '../../shared/types';
 import { checkClaudeReady, runClaudeTask } from '../claude/service';
-import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles } from '../git/service';
+import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import {
   createBranchForIssue,
   createPullRequest,
@@ -110,6 +110,9 @@ export class TaskManager {
       issueNumber: task.issueNumber
     });
 
+    const diffSummary = await getFileDiffSummary(task.workspacePath, selectedFiles);
+    const summary = `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
+
     const forkContext = await ensureFork(task.repoFullName);
     const pr = await createPullRequest({
       context: forkContext,
@@ -118,7 +121,7 @@ export class TaskManager {
       issueTitle: task.issueTitle,
       taskType: task.taskType,
       changedFiles: selectedFiles,
-      summary: 'AI 已根据 Issue 描述与评论完成代码改动，并通过 GitAgent 自动提交。'
+      summary
     });
 
     const next = mainState.patchTask(task.id, {

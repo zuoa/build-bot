@@ -4,8 +4,12 @@ export declare function cloneBranchWorkspace(params: {
     context: ForkContext;
     branchName: string;
     issueNumber: number;
+    taskId: string;
+    signal?: AbortSignal;
+    onProgress?: (message: string) => void;
 }): Promise<string>;
 export declare function listChangedFiles(workspacePath: string): Promise<string[]>;
+export declare function getFileDiffSummary(workspacePath: string, files: string[]): Promise<string>;
 export declare function commitAndPush(params: {
     workspacePath: string;
     branchName: string;
