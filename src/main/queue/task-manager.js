@@ -102,7 +102,7 @@ export class TaskManager {
             text: pr.existed ? `检测到已有 PR: #${pr.number}` : `PR 创建成功: #${pr.number}`
         });
         this.emitTask(next.id);
-        await this.cleanupTaskWorkspace(task.id, task.workspacePath);
+        this.scheduleWorkspaceCleanup(task.id, task.workspacePath);
         return mainState.getTask(task.id);
     }
     async cancelTask(taskId) {
@@ -158,6 +158,9 @@ export class TaskManager {
                 text: `工作目录清理失败：${message}`
             });
         }
+    }
+    scheduleWorkspaceCleanup(taskId, workspacePath) {
+        void this.cleanupTaskWorkspace(taskId, workspacePath);
     }
     appendLog(taskId, log) {
         const task = mainState.getTask(taskId);
@@ -249,7 +252,7 @@ export class TaskManager {
                     level: 'error',
                     text: 'AI 未生成代码变更，请查看执行日志'
                 });
-                await this.cleanupTaskWorkspace(taskId, workspacePath);
+                this.scheduleWorkspaceCleanup(taskId, workspacePath);
                 this.onTaskUpdate(failed);
                 return;
             }
@@ -275,7 +278,7 @@ export class TaskManager {
                     result: { error: message }
                 });
                 this.appendLog(taskId, { level: 'error', text: '任务已取消' });
-                await this.cleanupTaskWorkspace(taskId, mainState.getTask(taskId)?.workspacePath);
+                this.scheduleWorkspaceCleanup(taskId, mainState.getTask(taskId)?.workspacePath);
                 this.onTaskUpdate(cancelled);
             }
             else {
@@ -285,7 +288,7 @@ export class TaskManager {
                     result: { error: message }
                 });
                 this.appendLog(taskId, { level: 'error', text: message });
-                await this.cleanupTaskWorkspace(taskId, mainState.getTask(taskId)?.workspacePath);
+                this.scheduleWorkspaceCleanup(taskId, mainState.getTask(taskId)?.workspacePath);
                 this.onTaskUpdate(failed);
             }
         }

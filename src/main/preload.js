@@ -52,6 +52,9 @@ const desktopApi = {
         };
         ipcRenderer.on(IPC_CHANNELS.TASK_UPDATED, wrapped);
         return () => ipcRenderer.removeListener(IPC_CHANNELS.TASK_UPDATED, wrapped);
+    },
+    openExternal(url) {
+        return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url);
     }
 };
 contextBridge.exposeInMainWorld('desktopApi', desktopApi);

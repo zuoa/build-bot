@@ -224,34 +224,48 @@ button.ghost:hover {
   position: relative;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
-  padding: 30px 12px 12px;
+  padding: 62px 12px 12px;
 }
 
 .shell.is-mac {
-  padding-top: 54px;
+  padding-top: 78px;
 }
 
 .top-brand-strip {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 12;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 0;
+  padding: 7px 16px 7px 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(16px);
   -webkit-app-region: drag;
   -webkit-user-select: none;
   user-select: none;
+  max-width: min(320px, calc(100% - 240px));
 }
 
 .top-brand-strip .app-logo svg {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
 }
 
 .top-brand-strip .app-logo span {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--ink);
 }
 
@@ -280,7 +294,7 @@ button.ghost:hover {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 8px 12px;
   border: 1px solid var(--line);
@@ -294,16 +308,31 @@ button.ghost:hover {
 
 .topbar-brand h2 {
   margin: 0;
-  font-size: clamp(18px, 2vw, 22px);
-  line-height: 1;
+  font-size: clamp(16px, 1.6vw, 20px);
+  line-height: 1.15;
   letter-spacing: -0.02em;
 }
 
+.topbar-subtle {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .topbar-right {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 13;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
   -webkit-app-region: no-drag;
+  min-width: 0;
+  max-width: calc(100% - 24px);
+  flex-wrap: wrap;
 }
 
 .topbar-stats-compact {
@@ -316,14 +345,14 @@ button.ghost:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 26px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0 6px;
   border-radius: 6px;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: none;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--ink-soft);
   white-space: nowrap;
 }
 
@@ -350,22 +379,22 @@ button.ghost:hover {
   align-items: center;
   gap: 6px;
   height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
+  padding: 0 8px;
+  border: none;
   border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
+  background: transparent;
+  color: var(--ink-soft);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
   white-space: nowrap;
   max-width: 240px;
 }
 
 .repo-switcher-btn:hover {
-  background: var(--surface-soft);
-  border-color: var(--line-strong);
+  background: rgba(17, 24, 39, 0.05);
+  color: var(--ink);
 }
 
 .repo-switcher-btn .repo-icon {
@@ -397,7 +426,12 @@ button.ghost:hover {
 }
 
 .auto-toggle-btn {
-  min-width: 112px;
+  min-width: auto;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -405,6 +439,13 @@ button.ghost:hover {
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  box-shadow: none;
+}
+
+.auto-toggle-btn:hover {
+  background: rgba(17, 24, 39, 0.05);
+  color: var(--ink);
+  box-shadow: none;
 }
 
 .auto-toggle-dot {
@@ -415,7 +456,6 @@ button.ghost:hover {
 }
 
 .auto-toggle-btn.is-on {
-  border-color: #0f766e;
   color: #0f766e;
 }
 
@@ -426,13 +466,13 @@ button.ghost:hover {
 
 .auto-countdown {
   min-width: 36px;
-  height: 28px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 8px;
+  padding: 0 6px;
   border-radius: 8px;
-  background: rgba(15, 118, 110, 0.08);
+  background: transparent;
   color: #0f766e;
   font-size: 11px;
   font-weight: 600;
@@ -457,12 +497,29 @@ button.ghost:hover {
 }
 
 .global-settings-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 13;
   app-region: no-drag;
   -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  color: var(--ink-soft);
+}
+
+.global-settings-btn:hover {
+  background: rgba(17, 24, 39, 0.05);
+}
+
+.topbar-brand {
+  max-width: min(520px, calc(100% - 24px));
+}
+
+.shell.is-mac .top-brand-strip {
+  top: 20px;
+}
+
+.shell.is-mac .topbar-right {
+  top: 20px;
 }
 
 .repo-jump-form {
@@ -479,16 +536,41 @@ button.ghost:hover {
 }
 
 .workspace {
+  grid-row: 2;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
 }
 
 .content-stack {
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
+}
+
+.global-error {
+  grid-row: 1;
+}
+
+.workspace-stage {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 86%, white);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(249, 250, 251, 0.96)),
+    var(--surface-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 12px 36px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
 }
 
 .panel {
@@ -787,13 +869,17 @@ button.ghost:hover {
 
 .task-workspace {
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  align-items: stretch;
   gap: 12px;
 }
 
 .task-panel {
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
@@ -848,6 +934,7 @@ button.ghost:hover {
 
 .task-rail {
   min-height: 0;
+  height: 100%;
   padding: 0;
   overflow: hidden;
 }
@@ -1232,13 +1319,8 @@ button.ghost:hover {
 }
 
 @media (max-width: 1240px) {
-  .topbar-compact {
-    flex-wrap: wrap;
-  }
-
   .topbar-right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    max-width: calc(100% - 24px);
   }
 }
 
@@ -1246,25 +1328,34 @@ button.ghost:hover {
   .shell {
     height: auto;
     min-height: 100%;
+    padding-top: 56px;
   }
 
   .topbar-compact {
-    flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
   }
 
   .topbar-right {
-    justify-content: flex-end;
-    flex-wrap: wrap;
+    top: 8px;
+    right: 12px;
     gap: 8px;
+    max-width: calc(100% - 24px);
+  }
+
+  .top-brand-strip {
+    max-width: calc(100% - 172px);
+    padding-inline: 12px;
+  }
+
+  .top-brand-strip .app-logo span {
+    font-size: 13px;
   }
 
   .topbar-stats-compact {
-    order: 1;
+    display: none;
   }
 
   .repo-switcher-btn {
-    order: 2;
     max-width: 100%;
   }
 

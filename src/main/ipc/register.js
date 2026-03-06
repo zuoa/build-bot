@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/api';
 import { AutoModeService } from '../automation/service';
 import { bootstrapSessionFromKeychain, loginWithToken, logoutGithub } from '../github/client';
@@ -109,5 +109,8 @@ export function registerIpcHandlers(mainWindow) {
     });
     ipcMain.handle(IPC_CHANNELS.CANCEL_TASK, async (_, taskId) => {
         await taskManager.cancelTask(taskId);
+    });
+    ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url) => {
+        await shell.openExternal(url);
     });
 }

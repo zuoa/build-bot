@@ -61,6 +61,7 @@ export interface AutoModeSettings {
 export type TaskStatus =
   | 'pending'
   | 'running'
+  | 'awaiting_human_confirmation'
   | 'completed'
   | 'failed'
   | 'cancelled';

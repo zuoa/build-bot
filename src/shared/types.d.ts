@@ -49,7 +49,7 @@ export interface AutoModeSettings {
     enabled: boolean;
     pollIntervalSec: number;
 }
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'pending' | 'running' | 'awaiting_human_confirmation' | 'completed' | 'failed' | 'cancelled';
 export interface TaskLog {
     at: number;
     level: 'info' | 'success' | 'error' | 'thinking';

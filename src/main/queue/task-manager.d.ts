@@ -13,6 +13,7 @@ export declare class TaskManager {
     private processLoop;
     private emitTask;
     private cleanupTaskWorkspace;
+    private scheduleWorkspaceCleanup;
     private appendLog;
     private executeTask;
     private buildPrompt;

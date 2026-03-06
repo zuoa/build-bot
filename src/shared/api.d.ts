@@ -17,6 +17,7 @@ export interface DesktopApi {
     enqueueTask(input: EnqueueTaskInput): Promise<TaskEntity>;
     cancelTask(taskId: string): Promise<void>;
     onTaskUpdated(listener: (task: TaskEntity) => void): () => void;
+    openExternal(url: string): Promise<void>;
 }
 export declare const IPC_CHANNELS: {
     readonly LOGIN_WITH_TOKEN: "auth:login-with-token";
@@ -33,4 +34,5 @@ export declare const IPC_CHANNELS: {
     readonly ENQUEUE_TASK: "task:enqueue";
     readonly CANCEL_TASK: "task:cancel";
     readonly TASK_UPDATED: "event:task-updated";
+    readonly OPEN_EXTERNAL: "app:open-external";
 };

@@ -22,6 +22,8 @@ function statusLabel(status: TaskEntity['status']): string {
       return '等待中';
     case 'running':
       return '执行中';
+    case 'awaiting_human_confirmation':
+      return '待人工确认';
     case 'completed':
       return '已完成';
     case 'failed':
@@ -35,6 +37,8 @@ function statusLabel(status: TaskEntity['status']): string {
 
 function statusClass(status: TaskEntity['status']): string {
   switch (status) {
+    case 'awaiting_human_confirmation':
+      return 'status status-warn';
     case 'completed':
       return 'status status-success';
     case 'failed':
@@ -276,6 +280,7 @@ export default function App(): JSX.Element {
     const stats = {
       running: 0,
       pending: 0,
+      awaiting: 0,
       failed: 0,
       completed: 0
     };
@@ -286,6 +291,9 @@ export default function App(): JSX.Element {
           break;
         case 'pending':
           stats.pending += 1;
+          break;
+        case 'awaiting_human_confirmation':
+          stats.awaiting += 1;
           break;
         case 'completed':
           stats.completed += 1;
@@ -527,104 +535,64 @@ export default function App(): JSX.Element {
     <div className={`shell${IS_MAC ? ' is-mac' : ''}`}>
       <div className="window-drag-strip" aria-hidden="true" />
 
-      <div className="topbar-compact">
-        <div className="topbar-brand">
-          <div className="brand-lockup">
-            <AppLogo compact />
-            <div>
-              <p className="eyebrow">BuildBot Desktop</p>
-              <h2>{snapshot.account.login}</h2>
-            </div>
       <div className="top-brand-strip">
         <AppLogo />
       </div>
 
-      <header className="topbar">
-        <div className="topbar-main">
-          <div className="header-actions header-actions-left">
-            <span className="repo-label">{snapshot.selectedRepo?.fullName ?? '未选择仓库'}</span>
-            <span className="user-label">@{snapshot.account.login}</span>
-          </div>
-
-          <div className="header-actions">
-            <button
-              className="ghost icon-btn"
-              onClick={handleOpenRepoSwitcher}
-              title="切换仓库"
-              aria-label="切换仓库"
-            >
-              <FolderOpen aria-hidden="true" />
-            </button>
-            <button
-              className={`ghost auto-toggle-btn ${autoModeEnabled ? 'is-on' : 'is-off'}`}
-              onClick={() => void handleQuickToggleAutoMode()}
-              disabled={savingSettings}
-              title={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
-              aria-label={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
-            >
-              <span className="auto-toggle-dot" aria-hidden="true" />
-              自动模式 {autoModeEnabled ? '开' : '关'}
-            </button>
-            {autoModeEnabled && autoModeCountdown > 0 ? (
-              <span className="auto-countdown" title={`下次轮询还有 ${autoModeCountdown} 秒`}>
-                {autoModeCountdown}s
-              </span>
-            ) : null}
-          </div>
+      <div className="topbar-right">
+        <div className="topbar-stats-compact">
+          <span
+            className="stat-pill"
+            title={`${taskStats.running} 运行中 / ${taskStats.pending} 等待中 / ${taskStats.awaiting} 待人工确认`}
+          >
+            <span className="stat-dot stat-dot-run" />
+            {taskStats.running}/{taskStats.pending}/{taskStats.awaiting}
+          </span>
+          <span className="stat-pill" title={`${taskStats.failed} 失败`}>
+            <span className="stat-dot stat-dot-error" />
+            {taskStats.failed}
+          </span>
+          <span className="stat-pill" title={`${taskStats.completed} 已完成 / 共 ${snapshot.tasks.length} 任务`}>
+            <span className="stat-dot stat-dot-success" />
+            {taskStats.completed}
+          </span>
         </div>
 
-        <div className="topbar-right">
-          <div className="topbar-stats-compact">
-            <span className="stat-pill" title={`${taskStats.running} 运行中 / ${taskStats.pending} 等待中`}>
-              <span className="stat-dot stat-dot-run" />
-              {taskStats.running}/{taskStats.pending}
-            </span>
-            <span className="stat-pill" title={`${taskStats.failed} 失败`}>
-              <span className="stat-dot stat-dot-error" />
-              {taskStats.failed}
-            </span>
-            <span className="stat-pill" title={`${taskStats.completed} 已完成 / 共 ${snapshot.tasks.length} 任务`}>
-              <span className="stat-dot stat-dot-success" />
-              {taskStats.completed}
-            </span>
-          </div>
+        <button
+          className="repo-switcher-btn"
+          onClick={handleOpenRepoSwitcher}
+          title="切换仓库"
+          aria-label="切换仓库"
+        >
+          <FolderOpen aria-hidden="true" className="repo-icon" />
+          <span className="repo-name">{snapshot.selectedRepo?.fullName ?? '未选择'}</span>
+        </button>
 
-          <button
-            className="repo-switcher-btn"
-            onClick={handleOpenRepoSwitcher}
-            title="切换仓库"
-            aria-label="切换仓库"
-          >
-            <FolderOpen aria-hidden="true" className="repo-icon" />
-            <span className="repo-name">{snapshot.selectedRepo?.fullName ?? '未选择'}</span>
-          </button>
+        <button
+          className={`ghost auto-toggle-btn ${autoModeEnabled ? 'is-on' : 'is-off'}`}
+          onClick={() => void handleQuickToggleAutoMode()}
+          disabled={savingSettings}
+          title={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+          aria-label={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+        >
+          <span className="auto-toggle-dot" aria-hidden="true" />
+          自动模式 {autoModeEnabled ? '开' : '关'}
+        </button>
+        {autoModeEnabled && autoModeCountdown > 0 ? (
+          <span className="auto-countdown" title={`下次轮询还有 ${autoModeCountdown} 秒`}>
+            {autoModeCountdown}s
+          </span>
+        ) : null}
 
-          <button
-            className={`ghost auto-toggle-btn ${autoModeEnabled ? 'is-on' : 'is-off'}`}
-            onClick={() => void handleQuickToggleAutoMode()}
-            disabled={savingSettings}
-            title={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
-            aria-label={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
-          >
-            <span className="auto-toggle-dot" aria-hidden="true" />
-            自动模式 {autoModeEnabled ? '开' : '关'}
-          </button>
-          {autoModeEnabled && autoModeCountdown > 0 ? (
-            <span className="auto-countdown" title={`下次轮询还有 ${autoModeCountdown} 秒`}>
-              {autoModeCountdown}s
-            </span>
-          ) : null}
-        </div>
+        <button
+          className="icon-btn icon-plain global-settings-btn"
+          onClick={() => void handleOpenSettings()}
+          title="设置"
+          aria-label="设置"
+        >
+          <Settings aria-hidden="true" />
+        </button>
       </div>
-
-      <button
-        className="icon-btn icon-plain global-settings-btn"
-        onClick={() => void handleOpenSettings()}
-        title="设置"
-        aria-label="设置"
-      >
-        <Settings aria-hidden="true" />
-      </button>
 
       {repoSwitcherOpen ? (
         <div className="repo-modal-mask" onClick={() => setRepoSwitcherOpen(false)}>
@@ -751,226 +719,230 @@ export default function App(): JSX.Element {
         {error ? <div className="global-error">{error}</div> : null}
 
         <main className="workspace">
-          <div className="task-workspace">
-          <section className="task-panel panel task-panel-main">
-            <div className="panel-head panel-head-main panel-head-stack">
-              <div className="panel-head-copy">
-                <h3>{workspaceView === 'tasks' ? '任务队列' : 'Issues'}</h3>
-                <p>
-                  {workspaceView === 'tasks'
-                    ? '左侧切换任务，右侧持续查看执行态。'
-                    : '自动模式下可人工查看候选 Issue，必要时手动发起任务。'}
-                </p>
-              </div>
-              <div className="sidebar-switch" aria-label="左侧列表切换">
-                <button
-                  type="button"
-                  aria-pressed={workspaceView === 'tasks'}
-                  className={`sidebar-switch-btn ${workspaceView === 'tasks' ? 'is-active' : ''}`}
-                  onClick={() => setWorkspaceView('tasks')}
-                >
-                  任务队列
-                  <span>{snapshot.tasks.length}</span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={workspaceView === 'issues'}
-                  className={`sidebar-switch-btn ${workspaceView === 'issues' ? 'is-active' : ''}`}
-                  onClick={() => setWorkspaceView('issues')}
-                >
-                  Issues
-                  <span>{openIssueCount}</span>
-                </button>
-              </div>
-            </div>
-
-            {workspaceView === 'tasks' ? (
-              <div className="task-queue-column">
-                <div className="task-section-label">
-                  <span>Queue</span>
-                  <small>自动模式下，这里是排队和历史任务的入口。</small>
-                </div>
-                <div className="task-scroll">
-                  {snapshot.tasks.map((task) => (
-                    <button
-                      key={task.id}
-                      className={`task-item ${activeTask?.id === task.id ? 'active' : ''}`}
-                      onClick={() => setActiveTaskId(task.id)}
-                    >
-                      <p>
-                        #{task.issueNumber} {task.issueTitle}
-                      </p>
-                      <div>
-                        <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
-                        <small>{formatTime(task.startedAt)}</small>
-                      </div>
-                      {task.result?.error ? (
-                        <small className="task-error-hint" title={task.result.error}>
-                          {task.result.error}
-                        </small>
-                      ) : null}
-                      {task.logs.length > 0 ? (
-                        <small className="task-log-hint" title={task.logs[task.logs.length - 1]?.text}>
-                          {task.logs[task.logs.length - 1]?.text}
-                        </small>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="issue-sidebar">
-                <div className="issue-sidebar-filters">
-                  <select
-                    value={filter.state}
-                    onChange={(event) => setFilter({ state: event.target.value as 'open' | 'closed' | 'all' })}
-                  >
-                    <option value="open">Open</option>
-                    <option value="closed">Closed</option>
-                    <option value="all">All</option>
-                  </select>
-
-                  <select
-                    value={filter.assignee}
-                    onChange={(event) => setFilter({ assignee: event.target.value as 'me' | 'all' })}
-                  >
-                    <option value="all">全部分配</option>
-                    <option value="me">分配给我</option>
-                  </select>
-
-                  <input
-                    value={filter.keyword}
-                    onChange={(event) => setFilter({ keyword: event.target.value })}
-                    placeholder="搜索标题"
-                  />
-
-                  <select
-                    value={filter.labels[0] ?? ''}
-                    onChange={(event) =>
-                      setFilter({ labels: event.target.value ? [event.target.value] : [] })
-                    }
-                  >
-                    <option value="">全部标签</option>
-                    {labelOptions.map((label) => (
-                      <option value={label} key={label}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button disabled={loading || refreshing} onClick={() => void handleFilterRefresh()}>
-                    {refreshing ? '刷新中...' : '刷新'}
-                  </button>
-                </div>
-
-                <div className="list-scroll issue-sidebar-list">
-                  {snapshot.issues.map((issue) => {
-                    const task = issueTaskMap.get(issue.number);
-                    return (
-                      <button
-                        key={issue.id}
-                        className={`issue-item ${selectedIssue?.number === issue.number ? 'active' : ''}`}
-                        onClick={() => {
-                          void loadIssueDetail(issue.number);
-                          setIssueDetailOpen(true);
-                        }}
-                      >
-                        <div className="issue-head">
-                          <span>#{issue.number}</span>
-                          {task ? <span className={statusClass(task.status)}>{statusLabel(task.status)}</span> : null}
-                        </div>
-                        <p>{issue.title}</p>
-                        <div className="labels">
-                          {issue.labels.slice(0, 3).map((label) => (
-                            <span key={label.id} style={{ borderColor: `#${label.color}` }}>
-                              {label.name}
-                            </span>
-                          ))}
-                        </div>
-                        <small>
-                          @{issue.author} · {formatTime(issue.updatedAt)}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
-
-          <aside className="task-rail panel">
-            <div className="task-rail-shell">
-              <div className="task-rail-header">
-                <div>
-                  <p className="eyebrow">Run Console</p>
-                  <h4>{activeTask ? `#${activeTask.issueNumber}` : '等待任务'}</h4>
-                </div>
-                {activeTask ? (
-                  <span className={statusClass(activeTask.status)}>{statusLabel(activeTask.status)}</span>
-                ) : null}
-              </div>
-
-              {activeTask ? (
-                <div className="task-detail task-detail-main">
-                  <div className="task-meta">
-                    <h4>{activeTask.issueTitle}</h4>
-                    <button className="ghost" onClick={() => void cancelTask(activeTask.id)}>
-                      取消任务
-                    </button>
+          <div className="workspace-stage">
+            <div className="task-workspace">
+              <section className="task-panel panel task-panel-main">
+                <div className="panel-head panel-head-main panel-head-stack">
+                  <div className="panel-head-copy">
+                    <h3>{workspaceView === 'tasks' ? '任务队列' : 'Issues'}</h3>
+                    <p>
+                      {workspaceView === 'tasks'
+                        ? '左侧切换任务，右侧持续查看执行态。'
+                        : '自动模式下可人工查看候选 Issue，必要时手动发起任务。'}
+                    </p>
                   </div>
-
-                  {activeTask.result?.error ? (
-                    <div className="task-error-banner">{activeTask.result.error}</div>
-                  ) : null}
-
-                  {activeTask.changedFiles.length > 0 ? (
-                    <section className="changes">
-                      <h5>变更文件</h5>
-                      {activeTask.changedFiles.map((file) => (
-                        <label key={file.path}>{file.path}</label>
-                      ))}
-                    </section>
-                  ) : null}
-
-                  {activeTask.result?.prUrl ? (
+                  <div className="sidebar-switch" aria-label="左侧列表切换">
                     <button
-                      className="pr-link"
                       type="button"
-                      onClick={() => void window.desktopApi.openExternal(activeTask.result!.prUrl)}
+                      aria-pressed={workspaceView === 'tasks'}
+                      className={`sidebar-switch-btn ${workspaceView === 'tasks' ? 'is-active' : ''}`}
+                      onClick={() => setWorkspaceView('tasks')}
                     >
-                      打开 PR #{activeTask.result.prNumber}
+                      任务队列
+                      <span>{snapshot.tasks.length}</span>
                     </button>
-                  ) : null}
-
-                  <div className="log-box" ref={logBoxRef}>
-                    {renderedLogs.length === 0 ? (
-                      <p className="log-empty">等待日志输出...</p>
-                    ) : (
-                      renderedLogs.map((log) => (
-                        <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
-                          <span className={`log-badge log-badge-${log.level}`}>{logLevelLabel(log.level)}</span>
-                          <div className="log-main">
-                            <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
-                            <p className={`log-text log-${log.level}`}>{log.text}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                    <button
+                      type="button"
+                      aria-pressed={workspaceView === 'issues'}
+                      className={`sidebar-switch-btn ${workspaceView === 'issues' ? 'is-active' : ''}`}
+                      onClick={() => setWorkspaceView('issues')}
+                    >
+                      Issues
+                      <span>{openIssueCount}</span>
+                    </button>
                   </div>
                 </div>
-              ) : (
-                <div className="empty-state empty-state-rail">
-                  <strong>暂无任务</strong>
-                  <p className="muted">当前没有排队或执行中的任务。需要人工介入时，可切到 Issues 发起任务。</p>
-                  <button className="ghost" type="button" onClick={() => setWorkspaceView('issues')}>
-                    打开 Issues
-                  </button>
+
+                {workspaceView === 'tasks' ? (
+                  <div className="task-queue-column">
+                    <div className="task-section-label">
+                      <span>Queue</span>
+                      <small>自动模式下，这里是排队和历史任务的入口。</small>
+                    </div>
+                    <div className="task-scroll">
+                      {snapshot.tasks.map((task) => (
+                        <button
+                          key={task.id}
+                          className={`task-item ${activeTask?.id === task.id ? 'active' : ''}`}
+                          onClick={() => setActiveTaskId(task.id)}
+                        >
+                          <p>
+                            #{task.issueNumber} {task.issueTitle}
+                          </p>
+                          <div>
+                            <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
+                            <small>{formatTime(task.startedAt)}</small>
+                          </div>
+                          {task.result?.error ? (
+                            <small className="task-error-hint" title={task.result.error}>
+                              {task.result.error}
+                            </small>
+                          ) : null}
+                          {task.logs.length > 0 ? (
+                            <small className="task-log-hint" title={task.logs[task.logs.length - 1]?.text}>
+                              {task.logs[task.logs.length - 1]?.text}
+                            </small>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="issue-sidebar">
+                    <div className="issue-sidebar-filters">
+                      <select
+                        value={filter.state}
+                        onChange={(event) => setFilter({ state: event.target.value as 'open' | 'closed' | 'all' })}
+                      >
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                        <option value="all">All</option>
+                      </select>
+
+                      <select
+                        value={filter.assignee}
+                        onChange={(event) => setFilter({ assignee: event.target.value as 'me' | 'all' })}
+                      >
+                        <option value="all">全部分配</option>
+                        <option value="me">分配给我</option>
+                      </select>
+
+                      <input
+                        value={filter.keyword}
+                        onChange={(event) => setFilter({ keyword: event.target.value })}
+                        placeholder="搜索标题"
+                      />
+
+                      <select
+                        value={filter.labels[0] ?? ''}
+                        onChange={(event) =>
+                          setFilter({ labels: event.target.value ? [event.target.value] : [] })
+                        }
+                      >
+                        <option value="">全部标签</option>
+                        {labelOptions.map((label) => (
+                          <option value={label} key={label}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button disabled={loading || refreshing} onClick={() => void handleFilterRefresh()}>
+                        {refreshing ? '刷新中...' : '刷新'}
+                      </button>
+                    </div>
+
+                    <div className="list-scroll issue-sidebar-list">
+                      {snapshot.issues.map((issue) => {
+                        const task = issueTaskMap.get(issue.number);
+                        return (
+                          <button
+                            key={issue.id}
+                            className={`issue-item ${selectedIssue?.number === issue.number ? 'active' : ''}`}
+                            onClick={() => {
+                              void loadIssueDetail(issue.number);
+                              setIssueDetailOpen(true);
+                            }}
+                          >
+                            <div className="issue-head">
+                              <span>#{issue.number}</span>
+                              {task ? <span className={statusClass(task.status)}>{statusLabel(task.status)}</span> : null}
+                            </div>
+                            <p>{issue.title}</p>
+                            <div className="labels">
+                              {issue.labels.slice(0, 3).map((label) => (
+                                <span key={label.id} style={{ borderColor: `#${label.color}` }}>
+                                  {label.name}
+                                </span>
+                              ))}
+                            </div>
+                            <small>
+                              @{issue.author} · {formatTime(issue.updatedAt)}
+                            </small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <aside className="task-rail panel">
+                <div className="task-rail-shell">
+                  <div className="task-rail-header">
+                    <div>
+                      <p className="eyebrow">Run Console</p>
+                      <h4>{activeTask ? `#${activeTask.issueNumber}` : '等待任务'}</h4>
+                    </div>
+                    {activeTask ? (
+                      <span className={statusClass(activeTask.status)}>{statusLabel(activeTask.status)}</span>
+                    ) : null}
+                  </div>
+
+                  {activeTask ? (
+                    <div className="task-detail task-detail-main">
+                      <div className="task-meta">
+                        <h4>{activeTask.issueTitle}</h4>
+                        {activeTask.status === 'pending' || activeTask.status === 'running' ? (
+                          <button className="ghost" onClick={() => void cancelTask(activeTask.id)}>
+                            取消任务
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {activeTask.result?.error ? (
+                        <div className="task-error-banner">{activeTask.result.error}</div>
+                      ) : null}
+
+                      {activeTask.changedFiles.length > 0 ? (
+                        <section className="changes">
+                          <h5>变更文件</h5>
+                          {activeTask.changedFiles.map((file) => (
+                            <label key={file.path}>{file.path}</label>
+                          ))}
+                        </section>
+                      ) : null}
+
+                      {activeTask.result?.prUrl ? (
+                        <button
+                          className="pr-link"
+                          type="button"
+                          onClick={() => void window.desktopApi.openExternal(activeTask.result?.prUrl ?? '')}
+                        >
+                          打开 PR #{activeTask.result.prNumber}
+                        </button>
+                      ) : null}
+
+                      <div className="log-box" ref={logBoxRef}>
+                        {renderedLogs.length === 0 ? (
+                          <p className="log-empty">等待日志输出...</p>
+                        ) : (
+                          renderedLogs.map((log) => (
+                            <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
+                              <span className={`log-badge log-badge-${log.level}`}>{logLevelLabel(log.level)}</span>
+                              <div className="log-main">
+                                <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
+                                <p className={`log-text log-${log.level}`}>{log.text}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="empty-state empty-state-rail">
+                      <strong>暂无任务</strong>
+                      <p className="muted">当前没有排队或执行中的任务。需要人工介入时，可切到 Issues 发起任务。</p>
+                      <button className="ghost" type="button" onClick={() => setWorkspaceView('issues')}>
+                        打开 Issues
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </aside>
             </div>
-          </aside>
-        </div>
-      </main>
+          </div>
+        </main>
       </div>
 
       {issueDetailOpen && selectedIssue ? (
