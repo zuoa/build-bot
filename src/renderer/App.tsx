@@ -6,6 +6,8 @@ import { useAppStore } from './store/useAppStore';
 
 marked.setOptions({ breaks: true, gfm: true });
 
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
 function formatTime(value?: number | string): string {
   if (!value) return '-';
   const date = new Date(value);
@@ -298,7 +300,7 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell${IS_MAC ? ' is-mac' : ''}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-lockup">
