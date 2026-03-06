@@ -535,6 +535,41 @@ export default function App(): JSX.Element {
               <p className="eyebrow">BuildBot Desktop</p>
               <h2>{snapshot.account.login}</h2>
             </div>
+      <div className="top-brand-strip">
+        <AppLogo />
+      </div>
+
+      <header className="topbar">
+        <div className="topbar-main">
+          <div className="header-actions header-actions-left">
+            <span className="repo-label">{snapshot.selectedRepo?.fullName ?? '未选择仓库'}</span>
+            <span className="user-label">@{snapshot.account.login}</span>
+          </div>
+
+          <div className="header-actions">
+            <button
+              className="ghost icon-btn"
+              onClick={handleOpenRepoSwitcher}
+              title="切换仓库"
+              aria-label="切换仓库"
+            >
+              <FolderOpen aria-hidden="true" />
+            </button>
+            <button
+              className={`ghost auto-toggle-btn ${autoModeEnabled ? 'is-on' : 'is-off'}`}
+              onClick={() => void handleQuickToggleAutoMode()}
+              disabled={savingSettings}
+              title={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+              aria-label={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+            >
+              <span className="auto-toggle-dot" aria-hidden="true" />
+              自动模式 {autoModeEnabled ? '开' : '关'}
+            </button>
+            {autoModeEnabled && autoModeCountdown > 0 ? (
+              <span className="auto-countdown" title={`下次轮询还有 ${autoModeCountdown} 秒`}>
+                {autoModeCountdown}s
+              </span>
+            ) : null}
           </div>
         </div>
 
