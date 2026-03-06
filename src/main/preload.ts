@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type DesktopApi } from '../shared/api';
 import type {
+  AutoModeSettings,
   ConfirmCommitInput,
   EnqueueTaskInput,
   IssueFilter,
@@ -22,6 +23,16 @@ const desktopApi: DesktopApi = {
   },
   clearAnthropicApiKey() {
     return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY);
+  },
+  saveAutoModeSettings(settings: AutoModeSettings) {
+    const normalized: AutoModeSettings = {
+      enabled: Boolean(settings?.enabled),
+      pollIntervalSec:
+        typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
+          ? settings.pollIntervalSec
+          : 180
+    };
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, normalized);
   },
   getState() {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_STATE);

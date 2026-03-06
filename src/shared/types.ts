@@ -53,6 +53,11 @@ export interface IssueFilter {
   keyword: string;
 }
 
+export interface AutoModeSettings {
+  enabled: boolean;
+  pollIntervalSec: number;
+}
+
 export type TaskStatus =
   | 'pending'
   | 'running'

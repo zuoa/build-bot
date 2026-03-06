@@ -7,6 +7,7 @@
 - 一键发起 AI 任务（Bug Fix / Feature）
 - 自动执行：Fork -> 分支 -> Clone -> Claude Code
 - 实时日志展示、任务队列（串行执行）
+- 自动模式开关：支持顶部快捷开关与设置页配置，定时拉取 Open Issue 并自动入队执行
 - 变更文件勾选确认 -> commit/push -> 创建 PR
 
 ## 技术栈
@@ -47,6 +48,15 @@ npm run dev
 4. 任务进入队列并自动执行，右侧实时查看日志
 5. 到 `待提交` 状态后勾选文件并确认提交
 6. 系统自动 push 并创建 PR，返回 PR 链接
+7. 可在顶部“切换仓库”按钮旁快速开/关“自动模式”
+8. 也可在设置中调整自动模式轮询间隔（30~3600 秒）
+
+## 自动模式说明
+
+- 拉取范围：当前选中仓库的 Open Issues
+- 入队规则：跳过已有任务的 Issue，新增任务自动进入现有串行队列
+- 触发时机：定时轮询；登录后和切换仓库后会触发一次检查
+- 任务类型：根据 Issue 标题/标签自动判断 `bugfix` 或 `feature`
 
 ## 当前 MVP 限制
 
@@ -60,11 +70,13 @@ npm run dev
 ```text
 src/
   main/
+    automation/
     claude/
     git/
     github/
     ipc/
     queue/
+    settings/
     index.ts
     preload.ts
   renderer/

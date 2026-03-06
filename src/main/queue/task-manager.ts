@@ -33,7 +33,7 @@ export class TaskManager {
 
   constructor(private readonly onTaskUpdate: TaskListener) {}
 
-  enqueue(input: EnqueueTaskInput, issue: IssueDetail): TaskEntity {
+  enqueue(input: EnqueueTaskInput, issueTitle: string): TaskEntity {
     if (this.queue.length >= 20) {
       throw new Error('队列最多支持 20 个任务');
     }
@@ -42,7 +42,7 @@ export class TaskManager {
       id: randomUUID(),
       repoFullName: input.repoFullName,
       issueNumber: input.issueNumber,
-      issueTitle: issue.title,
+      issueTitle: issueTitle || `Issue #${input.issueNumber}`,
       taskType: input.taskType,
       status: 'pending',
       logs: [],

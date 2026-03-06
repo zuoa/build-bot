@@ -4,6 +4,7 @@ export const IPC_CHANNELS = {
     GET_SETTINGS: 'settings:get',
     SAVE_ANTHROPIC_API_KEY: 'settings:save-anthropic-api-key',
     CLEAR_ANTHROPIC_API_KEY: 'settings:clear-anthropic-api-key',
+    SAVE_AUTO_MODE_SETTINGS: 'settings:save-auto-mode-settings',
     GET_STATE: 'app:get-state',
     LIST_REPOS: 'github:list-repos',
     SELECT_REPO: 'github:select-repo',

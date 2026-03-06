@@ -12,7 +12,7 @@ export class TaskManager {
     constructor(onTaskUpdate) {
         this.onTaskUpdate = onTaskUpdate;
     }
-    enqueue(input, issue) {
+    enqueue(input, issueTitle) {
         if (this.queue.length >= 20) {
             throw new Error('队列最多支持 20 个任务');
         }
@@ -20,7 +20,7 @@ export class TaskManager {
             id: randomUUID(),
             repoFullName: input.repoFullName,
             issueNumber: input.issueNumber,
-            issueTitle: issue.title,
+            issueTitle: issueTitle || `Issue #${input.issueNumber}`,
             taskType: input.taskType,
             status: 'pending',
             logs: [],

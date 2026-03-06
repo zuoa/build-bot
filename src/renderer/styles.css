@@ -294,6 +294,34 @@ button.ghost:hover {
   -webkit-app-region: no-drag;
 }
 
+.auto-toggle-btn {
+  min-width: 112px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.auto-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #9ca3af;
+}
+
+.auto-toggle-btn.is-on {
+  border-color: #0f766e;
+  color: #0f766e;
+}
+
+.auto-toggle-btn.is-on .auto-toggle-dot {
+  background: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+}
+
 .topbar-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -852,6 +880,47 @@ button.ghost:hover {
   margin: 0;
   color: #111111;
   font-size: 13px;
+}
+
+.auto-mode-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: var(--surface-soft);
+}
+
+.auto-mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toggle-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.toggle-line input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.auto-mode-interval {
+  display: grid;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.auto-mode-interval input {
+  width: 140px;
 }
 
 .repo-modal-actions,

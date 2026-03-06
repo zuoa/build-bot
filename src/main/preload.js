@@ -16,6 +16,15 @@ const desktopApi = {
     clearAnthropicApiKey() {
         return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY);
     },
+    saveAutoModeSettings(settings) {
+        const normalized = {
+            enabled: Boolean(settings?.enabled),
+            pollIntervalSec: typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
+                ? settings.pollIntervalSec
+                : 180
+        };
+        return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, normalized);
+    },
     getState() {
         return ipcRenderer.invoke(IPC_CHANNELS.GET_STATE);
     },

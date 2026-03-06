@@ -139,6 +139,8 @@ export default function App(): JSX.Element {
   const [repoCandidate, setRepoCandidate] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [hasAnthropicApiKey, setHasAnthropicApiKey] = useState(false);
+  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+  const [autoModePollIntervalSec, setAutoModePollIntervalSec] = useState(180);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string>();
   const logBoxRef = useRef<HTMLDivElement | null>(null);
@@ -165,6 +167,8 @@ export default function App(): JSX.Element {
     try {
       const settings = await window.desktopApi.getSettings();
       setHasAnthropicApiKey(settings.hasAnthropicApiKey);
+      setAutoModeEnabled(settings.autoMode.enabled);
+      setAutoModePollIntervalSec(settings.autoMode.pollIntervalSec);
     } catch (err) {
       const message = err instanceof Error ? err.message : '读取设置失败';
       setSettingsMessage(message);
@@ -418,6 +422,46 @@ export default function App(): JSX.Element {
     }
   }
 
+  async function persistAutoModeSettings(
+    enabled: boolean,
+    pollIntervalSec: number,
+    withSettingsMessage: boolean
+  ): Promise<void> {
+    setSavingSettings(true);
+    if (withSettingsMessage) {
+      setSettingsMessage(undefined);
+    }
+    try {
+      const normalized = Number.isFinite(pollIntervalSec) ? Math.round(pollIntervalSec) : 180;
+      const saved = await window.desktopApi.saveAutoModeSettings({
+        enabled,
+        pollIntervalSec: normalized
+      });
+      setAutoModeEnabled(saved.enabled);
+      setAutoModePollIntervalSec(saved.pollIntervalSec);
+      if (withSettingsMessage) {
+        setSettingsMessage(saved.enabled ? '自动模式已开启' : '自动模式已关闭');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '自动模式保存失败';
+      if (withSettingsMessage) {
+        setSettingsMessage(message);
+      }
+      setError(message);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  async function handleSaveAutoModeSettings(): Promise<void> {
+    await persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true);
+  }
+
+  async function handleQuickToggleAutoMode(): Promise<void> {
+    setError(undefined);
+    await persistAutoModeSettings(!autoModeEnabled, autoModePollIntervalSec, false);
+  }
+
   async function handleConfirmCommit(task: TaskEntity): Promise<void> {
     const selected = task.changedFiles
       .filter((file) => fileSelection[task.id]?.[file.path] ?? true)
@@ -501,6 +545,16 @@ export default function App(): JSX.Element {
               aria-label="切换仓库"
             >
               <FolderOpen aria-hidden="true" />
+            </button>
+            <button
+              className={`ghost auto-toggle-btn ${autoModeEnabled ? 'is-on' : 'is-off'}`}
+              onClick={() => void handleQuickToggleAutoMode()}
+              disabled={savingSettings}
+              title={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+              aria-label={autoModeEnabled ? '关闭自动模式' : '开启自动模式'}
+            >
+              <span className="auto-toggle-dot" aria-hidden="true" />
+              自动模式 {autoModeEnabled ? '开' : '关'}
             </button>
           </div>
         </div>
@@ -651,6 +705,43 @@ export default function App(): JSX.Element {
               onChange={(event) => setAnthropicKey(event.target.value)}
               placeholder="sk-ant-..."
             />
+            <section className="auto-mode-section">
+              <div className="auto-mode-head">
+                <strong>自动模式</strong>
+                <label className="toggle-line">
+                  <input
+                    type="checkbox"
+                    checked={autoModeEnabled}
+                    onChange={(event) => setAutoModeEnabled(event.target.checked)}
+                  />
+                  启用
+                </label>
+              </div>
+              <p className="muted">
+                开启后会定时拉取当前仓库 Open Issue，自动触发开发任务，并进入右侧任务队列串行执行。
+              </p>
+              <label className="auto-mode-interval">
+                轮询间隔（秒）
+                <input
+                  type="number"
+                  min={30}
+                  max={3600}
+                  step={10}
+                  value={autoModePollIntervalSec}
+                  onChange={(event) => {
+                    const next = event.target.valueAsNumber;
+                    setAutoModePollIntervalSec(Number.isFinite(next) ? next : 180);
+                  }}
+                />
+              </label>
+              <button
+                className="ghost"
+                disabled={savingSettings}
+                onClick={() => void handleSaveAutoModeSettings()}
+              >
+                {savingSettings ? '保存中...' : '保存自动模式'}
+              </button>
+            </section>
             {settingsMessage ? <p className="settings-msg">{settingsMessage}</p> : null}
             <div className="settings-actions">
               <button disabled={savingSettings} onClick={() => void handleSaveAnthropicKey()}>

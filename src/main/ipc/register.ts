@@ -1,10 +1,20 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/api';
-import type { ConfirmCommitInput, EnqueueTaskInput, IssueFilter } from '../../shared/types';
+import type {
+  AutoModeSettings,
+  ConfirmCommitInput,
+  EnqueueTaskInput,
+  IssueFilter
+} from '../../shared/types';
+import { AutoModeService } from '../automation/service';
 import { bootstrapSessionFromKeychain, loginWithToken, logoutGithub } from '../github/client';
 import { getIssueDetail, getRepo, listIssues, listRepos } from '../github/service';
 import { initTaskManager } from '../queue/task-manager';
-import { clearAnthropicApiKey, hasAnthropicApiKey, saveAnthropicApiKey } from '../settings/service';
+import {
+  clearAnthropicApiKey,
+  hasAnthropicApiKey,
+  saveAnthropicApiKey
+} from '../settings/service';
 import { mainState } from '../state';
 
 export async function bootstrapAuthFromKeychain(): Promise<void> {
@@ -18,10 +28,19 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   const taskManager = initTaskManager((task) => {
     mainWindow.webContents.send(IPC_CHANNELS.TASK_UPDATED, task);
   });
+  const autoModeService = new AutoModeService(taskManager);
+  const autoModeReady = autoModeService.init().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[BuildBot][AutoMode] init failed: ${message}`);
+  });
 
   ipcMain.handle(IPC_CHANNELS.LOGIN_WITH_TOKEN, async (_, token: string) => {
     const account = await loginWithToken(token);
     mainState.setAccount(account);
+    await autoModeReady;
+    if (autoModeService.getSettings().enabled) {
+      void autoModeService.runTick('manual');
+    }
     return true;
   });
 
@@ -31,8 +50,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
+    await autoModeReady;
     return {
-      hasAnthropicApiKey: await hasAnthropicApiKey()
+      hasAnthropicApiKey: await hasAnthropicApiKey(),
+      autoMode: autoModeService.getSettings()
     };
   });
 
@@ -42,6 +63,17 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_ANTHROPIC_API_KEY, async () => {
     await clearAnthropicApiKey();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, async (_, settings?: AutoModeSettings) => {
+    await autoModeReady;
+    return autoModeService.saveSettings({
+      enabled: Boolean(settings?.enabled),
+      pollIntervalSec:
+        typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
+          ? settings.pollIntervalSec
+          : 180
+    });
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_STATE, () => {
@@ -67,6 +99,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     console.info(`[BuildBot][IPC] selectRepo fullName=${fullName}`);
     const repo = await getRepo(fullName);
     mainState.setSelectedRepo(repo);
+    await autoModeReady;
+    if (autoModeService.getSettings().enabled) {
+      void autoModeService.runTick('manual');
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.LIST_ISSUES, async (_, filter: IssueFilter) => {
@@ -97,7 +133,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.ENQUEUE_TASK, async (_, input: EnqueueTaskInput) => {
     const issue = await getIssueDetail(input.repoFullName, input.issueNumber);
     mainState.setSelectedIssue(issue);
-    return taskManager.enqueue(input, issue);
+    return taskManager.enqueue(input, issue.title);
   });
 
   ipcMain.handle(IPC_CHANNELS.CONFIRM_TASK_COMMIT, async (_, input: ConfirmCommitInput) => {

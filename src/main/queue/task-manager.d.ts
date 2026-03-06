@@ -1,4 +1,4 @@
-import type { ConfirmCommitInput, EnqueueTaskInput, IssueDetail, TaskEntity } from '../../shared/types';
+import type { ConfirmCommitInput, EnqueueTaskInput, TaskEntity } from '../../shared/types';
 type TaskListener = (task: TaskEntity) => void;
 export declare class TaskManager {
     private readonly onTaskUpdate;
@@ -6,7 +6,7 @@ export declare class TaskManager {
     private processing;
     private runtime;
     constructor(onTaskUpdate: TaskListener);
-    enqueue(input: EnqueueTaskInput, issue: IssueDetail): TaskEntity;
+    enqueue(input: EnqueueTaskInput, issueTitle: string): TaskEntity;
     confirmCommit(input: ConfirmCommitInput): Promise<TaskEntity>;
     cancelTask(taskId: string): Promise<void>;
     private kick;

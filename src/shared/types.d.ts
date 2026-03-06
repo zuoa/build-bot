@@ -45,6 +45,10 @@ export interface IssueFilter {
     assignee: 'me' | 'all';
     keyword: string;
 }
+export interface AutoModeSettings {
+    enabled: boolean;
+    pollIntervalSec: number;
+}
 export type TaskStatus = 'pending' | 'running' | 'awaiting_commit' | 'completed' | 'failed' | 'cancelled';
 export interface TaskLog {
     at: number;
