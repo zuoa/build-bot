@@ -1,86 +1,165 @@
-# GitAgent Desktop (MVP)
+# BuildBot Desktop
 
-基于你提供的 PRD（V1.0）实现的首版 MVP：
+> GitHub Issue -> AI 执行 -> Review -> 分支 / PR 的桌面端自动化工作台。  
+> 仓库中部分历史命名仍保留 `gitagent-desktop`，当前对外文档统一使用 `BuildBot Desktop`。
 
-- GitHub 登录（MVP 用 PAT，Token 存系统 Keychain）
-- 仓库列表与 Issue 列表/详情浏览、筛选
-- 一键发起 AI 任务（Bug Fix / Feature）
-- 自动执行：Fork -> 分支 -> Clone -> 实施 Agent -> Review Agent
-- 支持为实施 Agent / Review Agent 分别指定 Claude 或 Codex
-- 支持配置 Review Agent 审查严格度（严格/一般/宽松）与最大 Review 轮次
-- 实时日志展示、任务队列（串行执行）
-- 自动模式开关：支持顶部快捷开关与设置页配置，定时拉取 Open Issue 并自动入队执行
-- Review Agent 通过后自动 commit/push/创建 PR；未通过则继续返工
+BuildBot Desktop 是一个基于 Electron 的本地桌面应用，用来把 GitHub 仓库里的 Issue 转成可执行的开发任务。它负责串起仓库选择、Issue 浏览、任务排队、Agent 执行、Review 回路，以及最终的分支提交或 Pull Request 创建。
 
-## 技术栈
+这个项目的目标不是做一个通用聊天界面，而是把“接 Issue -> 改代码 -> 审查 -> 提交结果”这条链路收敛成一个可重复运行的工程流程。
 
-- Electron + React + TypeScript + Vite
-- Zustand（渲染层状态）
-- Octokit（GitHub API）
-- simple-git（Git 操作）
-- keytar（安全存储 Token）
+![BuildBot Dock Icon](assets/buildbot-dock.png)
+
+## 为什么做这个项目
+
+面向 GitHub Issue 的自动化开发工具很多，但常见问题也很明显：
+
+- 只能调用单一模型，难以区分“执行”和“审查”角色
+- 缺少任务队列与可视化日志，不适合连续处理多个 Issue
+- 能改代码，但缺少稳定的 Review 回路，结果难直接合入
+- 自动拉取 Issue 后容易失控，缺少人工确认和风险拦截
+
+BuildBot Desktop 的思路是把这些能力放进一个本地应用里，让仓库维护者可以更直接地控制 Agent 行为、提交流程和自动化边界。
+
+## 核心特性
+
+- GitHub 登录与仓库 / Issue 浏览，支持筛选、查看详情和评论
+- 一键把 Issue 发起为 `bugfix` 或 `feature` 任务
+- 串行任务队列，适合持续处理多个待办项
+- Implementation Agent 与 Review Agent 分离，且可分别选择 Claude 或 Codex
+- Review 严格度可配置，支持多轮审查与返工
+- Review 通过后自动提交结果，支持创建 PR 或直推目标分支
+- 自动模式可定时轮询 Open Issues，并按标签白名单自动入队
+- 实时日志面板，便于追踪执行过程、失败点和审查反馈
+- 风险 Issue 检测，命中高风险规则时自动转人工确认
+- GitHub Token 存入系统 Keychain，而不是明文落盘
+
+## 工作流
+
+1. 使用 GitHub PAT 登录并拉取可访问仓库。
+2. 选择仓库和目标 Issue，发起 `AI 修复` 或 `AI 开发`。
+3. BuildBot 准备工作区。
+   `PR 模式`：自动执行 Fork -> 分支 -> Clone。  
+   `直提模式`：直接切到配置的目标分支。
+4. Implementation Agent 在本地工作区修改代码，并输出过程日志。
+5. Review Agent 以只读方式审查当前改动，判断 `PASS` 或 `FAIL`。
+6. 如果审查失败，系统按反馈继续返工，直到通过或达到最大轮次。
+7. 审查通过后，自动提交结果。
+   `PR 模式`：push 并创建 Pull Request。  
+   `直提模式`：push 到指定分支。
+
+## 前置条件
+
+在本地运行前，需要准备：
+
+- 一个可用的 Node.js / npm 环境
+- 本机已安装 `git`
+- 一个 GitHub Personal Access Token
+  建议至少具备 `repo`、`workflow` 权限
+- 至少安装并登录一个 Agent CLI
+  `claude`：执行 `claude auth login`
+  `codex`：执行 `codex login`
+
+如果你希望把 Claude 用作执行或审查器，还需要本机安装 Claude Code。  
+如果你希望把 Codex 用作执行或审查器，还需要本机安装 Codex CLI。
 
 ## 快速启动
 
-1. 安装依赖
-
 ```bash
 npm install
-```
-
-2. 启动开发模式
-
-```bash
 npm run dev
 ```
 
-## 使用流程
+常用检查命令：
 
-1. 启动后输入 GitHub PAT 登录（至少 `repo`, `workflow` 权限）
-2. 选择仓库，筛选并打开目标 Issue
-3. 点击 `AI 修复` 或 `AI 开发`
-4. 任务进入队列并自动执行，右侧实时查看日志
-5. 实施 Agent 完成首轮改动后，Review Agent 会先审查当前变更
-6. 如果 Review Agent 未通过，系统会根据审查意见继续返工并再次审查
-7. 只有 Review Agent 明确通过后，系统才会自动 push 并创建 PR，返回 PR 链接
-8. 可在顶部“切换仓库”按钮旁快速开/关“自动模式”
-9. 也可在设置中调整 Review 严格度、Review 最大轮次，以及自动模式轮询间隔（30~3600 秒）
+```bash
+npm test
+npm run typecheck
+```
 
-## 自动模式说明
+## 使用方式
 
-- 拉取范围：当前选中仓库的 Open Issues
-- 入队规则：只自动拉取命中“自动入队标签”白名单的 Issue；默认值为 `bug, enhancement`。跳过已有任务、人工确认标签和其他标签的 Issue
-- 触发时机：定时轮询；登录后和切换仓库后会触发一次检查
-- 任务类型：根据 Issue 标题/标签自动判断 `bugfix` 或 `feature`
+1. 启动应用后输入 GitHub PAT 登录。
+2. 选择仓库，浏览或筛选 Issue。
+3. 打开目标 Issue，点击 `AI 修复` 或 `AI 开发`。
+4. 在右侧日志区域查看执行过程。
+5. 在设置面板中调整：
+   Implementation Provider
+   Review Provider
+   Review Strictness
+   Review Max Rounds
+   Submission Mode
+   Direct Branch Name
 
-## 当前 MVP 限制
+## 自动模式
 
-- 登录先采用 PAT（未接 GitHub OAuth loopback 全流程）
-- Prompt 自定义、多账号切换、通知系统尚未实现
-- Markdown 安全渲染未加 DOM sanitizer（MVP）
-- 依赖本机已安装 `git` 与 `claude` CLI
-- 若选择 Codex 作为执行器，还需本机安装 `codex` CLI 并完成 `codex login`
+自动模式用于持续轮询当前仓库的 Open Issues，并自动把符合条件的任务放进队列。
 
-## 目录结构
+- 轮询范围：当前选中仓库的 Open Issues
+- 触发时机：登录后、切换仓库后，以及后续定时轮询
+- 入队规则：只处理命中标签白名单的 Issue
+- 默认白名单：`bug`, `enhancement`
+- 自动去重：已有任务的 Issue 不会重复入队
+- 风险拦截：带有人工确认标签或命中高风险规则的 Issue 会被跳过
+
+这使它更适合处理一类“可以批量自动推进，但仍需要边界控制”的仓库维护任务。
+
+## 安全与控制
+
+BuildBot Desktop 不是无条件执行器，当前版本已经加入了一些基础保护：
+
+- 检测疑似 prompt injection、凭据导出、破坏性命令、远程脚本执行等高风险内容
+- 命中规则后自动添加 `needs-human-confirmation` 标签并暂停执行
+- Review Agent 只做审查，不允许修改文件或直接提交
+- GitHub Token 使用系统 Keychain 保存
+
+这套机制仍然是 MVP 级别，但已经覆盖了最常见的自动化失控场景。
+
+## 当前限制
+
+- 仍以 PAT 登录为主，尚未接入完整 GitHub OAuth 流程
+- Prompt 自定义、多账号切换、通知系统仍未实现
+- Markdown 渲染暂未加入 DOM sanitizer
+- 依赖本机已有 `git` 与至少一个可用的 Agent CLI
+- Electron 打包配置已存在，但仓库里还没有整理完整发布流程
+
+## 技术栈
+
+- Electron
+- React
+- TypeScript
+- Vite
+- Zustand
+- Octokit
+- simple-git
+- keytar
+
+## 项目结构
 
 ```text
 src/
   main/
-    automation/
-    claude/
-    git/
-    github/
-    ipc/
-    queue/
-    settings/
-    index.ts
-    preload.ts
+    agent/          # Agent 调度
+    automation/     # 自动模式
+    claude/         # Claude CLI 集成
+    codex/          # Codex CLI 集成
+    git/            # Git 工作区与提交流程
+    github/         # GitHub API 与 Token 管理
+    ipc/            # Electron IPC
+    queue/          # 任务队列与执行主流程
+    security/       # Issue 风险检测
+    settings/       # 本地配置
+    task-history/   # 任务持久化
   renderer/
+    components/
     store/
-    App.tsx
-    main.tsx
-    styles.css
   shared/
-    api.ts
-    types.ts
+tests/
+assets/
 ```
+
+## 适合谁用
+
+- 想把 GitHub Issue 处理流程自动化的个人开发者
+- 需要一个本地可控的 AI coding 工作台，而不是纯云端代理
+- 希望把“实现”和“审查”拆给不同 Agent 的仓库维护者
+- 想先用 MVP 验证自动化研发流程，再决定是否扩展到更完整的平台
