@@ -1,24 +1,28 @@
 # BuildBot Desktop
 
-> GitHub Issue -> AI 执行 -> Review -> 分支 / PR 的桌面端自动化工作台。  
+> A local console for agentic software delivery.  
 
-BuildBot Desktop 是一个基于 Electron 的本地桌面应用，用来把 GitHub 仓库里的 Issue 转成可执行的开发任务。它负责串起仓库选择、Issue 浏览、任务排队、Agent 执行、Review 回路，以及最终的分支提交或 Pull Request 创建。
+BuildBot Desktop 不是一个聊天式 AI 壳层，也不只是把 GitHub Issue 交给模型“跑一下”的自动化工具。它更接近一套面向真实代码仓库的本地 Agent orchestration console，用来把任务入口、上下文装配、代码实现、审查门禁与交付动作收敛成可控闭环。
 
-这个项目的目标不是做一个通用聊天界面，而是把“接 Issue -> 改代码 -> 审查 -> 提交结果”这条链路收敛成一个可重复运行的工程流程。
+在 BuildBot Desktop 里，Issue 或本地录入任务只是起点。真正的核心，是让不同职责的 Agent 在同一条工程链路里协同工作：Implementation Agent 负责推进改动，Review Agent 负责质量门禁，调度层负责队列、工作区、日志、风险控制与最终提交。
+
+这个项目想解决的，不是“如何让模型写一段代码”，而是“如何让 Agent 系统以工程化方式持续地产出可审查、可追踪、可交付的结果”。
 
 ![BuildBot](screenshots/login.jpg)
 
 
 ## 为什么做这个项目
 
-面向 GitHub Issue 的自动化开发工具很多，但常见问题也很明显：
+很多 AI 开发工具已经能完成“生成代码”这一步，但在真实团队环境里，真正决定可用性的往往是 Agent 之间如何协同、质量如何收口、风险如何约束，以及结果是否能顺利进入交付链路。
+
+常见问题通常也集中在这里：
 
 - 只能调用单一模型，难以区分“执行”和“审查”角色
 - 缺少任务队列与可视化日志，不适合连续处理多个 Issue
 - 能改代码，但缺少稳定的 Review 回路，结果难直接合入
 - 自动拉取 Issue 后容易失控，缺少人工确认和风险拦截
 
-BuildBot Desktop 的思路是把这些能力放进一个本地应用里，让仓库维护者可以更直接地控制 Agent 行为、提交流程和自动化边界。
+BuildBot Desktop 的思路，是把这些关键能力落到一个本地、可观察、可调度、可干预的 Agent 系统里，让仓库维护者真正拥有对执行链路、审查门槛和自动化边界的控制权。
 
 ## 核心特性
 
