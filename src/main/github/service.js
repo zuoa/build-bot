@@ -458,11 +458,11 @@ export async function createPullRequest(params) {
     const source = params.source ?? 'issue';
     const titlePrefix = params.taskType === 'feature' ? 'Feat' : 'Fix';
     const title = source === 'local'
-        ? `[GitAgent] ${titlePrefix}: ${params.issueTitle}`.slice(0, 120)
-        : `[GitAgent] ${titlePrefix}: #${params.issueNumber} ${params.issueTitle}`.slice(0, 120);
+        ? `[BuildBot] ${titlePrefix}: ${params.issueTitle}`.slice(0, 120)
+        : `[BuildBot] ${titlePrefix}: #${params.issueNumber} ${params.issueTitle}`.slice(0, 120);
     const body = [
         '## 修复说明',
-        params.summary.trim() || '由 GitAgent Desktop MVP 自动生成',
+        params.summary.trim() || '由 BuildBot Desktop 自动生成',
         '',
         ...(source === 'local'
             ? ['## 任务来源', '本次改动来自 BuildBot Desktop 的本地录入任务。']
@@ -472,7 +472,7 @@ export async function createPullRequest(params) {
         ...params.changedFiles.map((file) => `- ${file}`),
         '',
         '---',
-        '*本 PR 由 GitAgent Desktop 自动生成*'
+        '*本 PR 由 BuildBot Desktop 自动生成*'
     ].join('\n');
     const { data } = await octokit.rest.pulls.create({
         owner: params.context.upstream.owner,

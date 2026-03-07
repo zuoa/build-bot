@@ -835,31 +835,45 @@ export default function App(): JSX.Element {
   if (!snapshot.account) {
     return (
       <div className="login-wrap">
-        <section className="login-card">
-          <div className="brand-lockup login-brand">
+        <div className="login-shell">
+          <div className="login-brand-stage">
             <AppLogo />
-            <div>
-              <p className="eyebrow">BUILDBOT DESKTOP</p>
-              <h1>Issue to PR</h1>
-            </div>
+            <p className="login-brand-stage-subtitle">Desktop</p>
           </div>
-          <p className="login-copy">
-            使用 GitHub Personal Access Token 登录（建议权限：`repo` + `workflow`）。
-            Token 会写入系统 Keychain。
-          </p>
-          <form onSubmit={handleLogin} className="login-form">
-            <input
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="ghp_xxx"
-              autoFocus
-            />
-            <button disabled={loading} type="submit">
-              {loading ? '登录中...' : '登录并开始'}
-            </button>
-          </form>
-          {error ? <p className="error-msg">{error}</p> : null}
-        </section>
+
+          <section className="login-card">
+            <div className="login-headline">
+              <h1>Build Tasks Into Code</h1>
+              <p className="login-copy">
+                Agent 驱动的任务分解、编码实现、审查与交付。
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="login-form login-form-stack">
+              <label className="login-field">
+                <span>GitHub PAT</span>
+                <input
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                  placeholder="ghp_xxx"
+                  autoFocus
+                />
+              </label>
+              <div className="login-actions">
+                <button disabled={loading} type="submit">
+                  {loading ? '登录中...' : '登录并开始'}
+                </button>
+                <small>登录后可选择仓库、浏览 Issues，或直接本地录入任务。</small>
+              </div>
+              {error ? <p className="error-msg">{error}</p> : null}
+            </form>
+
+            <p className="login-copy login-copy-secondary login-footer-note">
+              使用 GitHub Personal Access Token 登录，建议权限：`repo` + `workflow`。Token
+              会写入系统 Keychain。
+            </p>
+          </section>
+        </div>
       </div>
     );
   }

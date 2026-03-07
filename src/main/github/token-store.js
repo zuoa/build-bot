@@ -1,5 +1,5 @@
 import keytar from 'keytar';
-const SERVICE_NAME = 'gitagent-desktop-mvp';
+const SERVICE_NAME = 'buildbot-desktop';
 const ACCOUNT_NAME = 'github-access-token';
 let memoryToken;
 export async function saveToken(token) {

@@ -602,7 +602,7 @@ export class TaskManager {
             .map((comment) => `- [${comment.author}] ${comment.body}`)
             .join('\n');
         return [
-            '你是 GitAgent Desktop 的代码执行代理，请直接修改当前仓库。',
+            '你是 BuildBot Desktop 的代码执行代理，请直接修改当前仓库。',
             modeInstruction,
             context.source === 'local'
                 ? '任务来源：本地录入。请结合任务说明、README 和代码现状完成实现。'

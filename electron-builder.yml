@@ -1,4 +1,4 @@
-appId: com.gitagent.desktop
+appId: com.buildbot.desktop
 productName: BuildBot Desktop
 files:
   - dist/**

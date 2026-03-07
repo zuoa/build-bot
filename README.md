@@ -1,7 +1,6 @@
 # BuildBot Desktop
 
 > GitHub Issue -> AI 执行 -> Review -> 分支 / PR 的桌面端自动化工作台。  
-> 仓库中部分历史命名仍保留 `gitagent-desktop`，当前对外文档统一使用 `BuildBot Desktop`。
 
 BuildBot Desktop 是一个基于 Electron 的本地桌面应用，用来把 GitHub 仓库里的 Issue 转成可执行的开发任务。它负责串起仓库选择、Issue 浏览、任务排队、Agent 执行、Review 回路，以及最终的分支提交或 Pull Request 创建。
 

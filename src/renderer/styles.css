@@ -136,41 +136,100 @@ button.ghost:hover {
   height: 100%;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top, rgba(17, 24, 39, 0.05), transparent 38%),
+    linear-gradient(180deg, #fbfbfa, #f4f4f2);
+}
+
+.login-shell {
+  width: min(720px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+}
+
+.login-brand-stage {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.login-brand-stage .app-logo {
+  gap: 12px;
+}
+
+.login-brand-stage .app-logo svg {
+  width: 56px;
+  height: 56px;
+}
+
+.login-brand-stage .app-logo span {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.login-brand-stage-subtitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 
 .login-card {
-  width: min(640px, 100%);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 14px;
-  padding: 28px;
-  box-shadow: var(--shadow-sm);
+  width: 100%;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  padding: 34px;
+  box-shadow:
+    0 28px 80px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
   animation: rise 220ms ease-out;
+  display: grid;
+  gap: 28px;
+  backdrop-filter: blur(14px);
 }
 
 .login-card h1 {
   margin: 0;
-  font-size: clamp(34px, 5vw, 52px);
-  line-height: 0.95;
-  letter-spacing: -0.02em;
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 0.92;
+  letter-spacing: -0.04em;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.brand-lockup {
-  display: flex;
-  align-items: center;
+.login-headline {
+  display: grid;
   gap: 10px;
-}
-
-.login-brand {
-  margin-bottom: 10px;
+  justify-items: center;
+  text-align: center;
 }
 
 .login-copy {
-  margin: 10px 0 0;
+  margin: 0;
+  max-width: 46ch;
+  color: #374151;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.login-copy-secondary {
   color: var(--ink-soft);
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.login-footer-note {
+  width: 100%;
+  max-width: none;
+  padding-top: 4px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .app-logo {
@@ -214,6 +273,70 @@ button.ghost:hover {
   grid-template-columns: 1fr 160px;
   gap: 10px;
   margin-top: 18px;
+}
+
+.login-form-stack {
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 0;
+  padding: 20px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 249, 248, 0.96)),
+    var(--surface);
+}
+
+.login-field {
+  display: grid;
+  gap: 8px;
+}
+
+.login-field span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.login-field input {
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border-color: rgba(17, 24, 39, 0.12);
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: rgba(17, 24, 39, 0.28);
+  box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.06);
+}
+
+.login-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.login-actions button {
+  min-width: 160px;
+  height: 44px;
+  border-radius: 14px;
+  padding: 0 16px;
+}
+
+.login-actions small {
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  max-width: 34ch;
+}
+
+.error-msg {
+  margin: 0;
 }
 
 .error-msg,
@@ -2221,6 +2344,37 @@ button.ghost:hover {
 
   .login-form {
     grid-template-columns: 1fr;
+  }
+
+  .login-card {
+    padding: 24px;
+    gap: 22px;
+  }
+
+  .login-brand-stage .app-logo svg {
+    width: 50px;
+    height: 50px;
+  }
+
+  .login-brand-stage .app-logo span {
+    font-size: 24px;
+  }
+
+  .login-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .login-actions button {
+    width: 100%;
+  }
+
+  .login-actions small {
+    max-width: none;
+  }
+
+  .login-footer-note {
+    white-space: normal;
   }
 
   .filter-row {

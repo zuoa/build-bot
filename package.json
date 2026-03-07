@@ -1,5 +1,6 @@
 {
-  "name": "gitagent-desktop",
+  "name": "buildbot-desktop",
+  "productName": "BuildBot Desktop",
   "version": "0.1.0",
   "private": true,
   "main": "dist-electron/index.js",

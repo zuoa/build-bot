@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { bootstrapAuthFromKeychain, registerIpcHandlers } from './ipc/register';
 import { loadTaskHistory, flushTaskHistorySync } from './task-history/store';
 import { mainState } from './state';
+// Set application name for Dock display (especially important in dev mode)
+app.setName('BuildBot Desktop');
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const APP_BG_COLOR = '#ECE7DE';
 const APP_TITLE_SYMBOL_COLOR = '#1A2027';
