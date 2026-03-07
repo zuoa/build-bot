@@ -3,7 +3,7 @@ import { mkdir, rm, statfs } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
-import type { TaskType } from '../../shared/types';
+import type { TaskSource, TaskType } from '../../shared/types';
 import type { ForkContext, RepoBranchContext } from '../github/service';
 
 const BASE_WORKSPACE = path.join(os.homedir(), 'gitagent-workspace');
@@ -290,7 +290,12 @@ export async function getFileDiffSummary(
   return summaries.join('\n');
 }
 
-function buildCommitMessage(taskType: TaskType, issueTitle: string, issueNumber: number): string {
+function buildCommitMessage(
+  taskType: TaskType,
+  issueTitle: string,
+  issueNumber: number,
+  source: TaskSource
+): string {
   const prefix = taskType === 'feature' ? 'feat' : 'fix';
   const normalized = issueTitle
     .toLowerCase()
@@ -299,6 +304,9 @@ function buildCommitMessage(taskType: TaskType, issueTitle: string, issueNumber:
     .trim();
 
   const base = `${prefix}: ${normalized}`.slice(0, 56).trim();
+  if (source === 'local') {
+    return base.slice(0, 72);
+  }
   const suffix = ` (closes #${issueNumber})`;
   return `${base}${suffix}`.slice(0, 72);
 }
@@ -310,6 +318,7 @@ export async function commitAndPush(params: {
   taskType: TaskType;
   issueTitle: string;
   issueNumber: number;
+  source?: TaskSource;
 }): Promise<{ commitSha: string }> {
   if (params.selectedFiles.length === 0) {
     throw new Error('没有检测到代码变更，无需提交');
@@ -321,7 +330,8 @@ export async function commitAndPush(params: {
   const commitMessage = buildCommitMessage(
     params.taskType,
     params.issueTitle,
-    params.issueNumber
+    params.issueNumber,
+    params.source ?? 'issue'
   );
   await git.commit(commitMessage);
   await git.push('origin', params.branchName);

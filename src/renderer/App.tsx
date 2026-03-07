@@ -9,6 +9,7 @@ import {
   GitBranch,
   GitPullRequest,
   LogOut,
+  Plus,
   Repeat,
   Settings,
   ShieldCheck,
@@ -23,6 +24,8 @@ import type {
   AgentProviderStatus,
   ReviewStrictness,
   SubmissionMode,
+  TaskType,
+  TaskSource,
   TaskEntity
 } from '../shared/types';
 import { buildLogDedupKey, normalizeVisibleLogText } from '../shared/log-dedupe';
@@ -123,6 +126,21 @@ function statusClass(status: TaskEntity['status']): string {
   }
 }
 
+function taskSourceLabel(source: TaskSource): string {
+  return source === 'local' ? '本地录入' : 'Issue';
+}
+
+function formatTaskTitle(task: TaskEntity): string {
+  return task.source === 'local' ? task.issueTitle : `#${task.issueNumber} ${task.issueTitle}`;
+}
+
+function formatTaskReference(task?: TaskEntity): string {
+  if (!task) {
+    return '等待任务';
+  }
+  return task.source === 'local' ? '本地任务' : `#${task.issueNumber}`;
+}
+
 function markdownHtml(content: string): string {
   try {
     const html = marked.parse(content) as string;
@@ -195,7 +213,12 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [repoSwitcherOpen, setRepoSwitcherOpen] = useState(false);
   const [issueDetailOpen, setIssueDetailOpen] = useState(false);
+  const [localTaskOpen, setLocalTaskOpen] = useState(false);
   const [repoCandidate, setRepoCandidate] = useState('');
+  const [localTaskTitle, setLocalTaskTitle] = useState('');
+  const [localTaskBody, setLocalTaskBody] = useState('');
+  const [localTaskType, setLocalTaskType] = useState<TaskType>('feature');
+  const [creatingLocalTask, setCreatingLocalTask] = useState(false);
   const [implementationProvider, setImplementationProvider] = useState<AgentProvider>('claude');
   const [reviewProvider, setReviewProvider] = useState<AgentProvider>('claude');
   const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictness>('normal');
@@ -404,6 +427,9 @@ export default function App(): JSX.Element {
   const issueTaskMap = useMemo(() => {
     const map = new Map<number, TaskEntity>();
     snapshot.tasks.forEach((task) => {
+      if (task.source !== 'issue') {
+        return;
+      }
       if (!map.has(task.issueNumber)) {
         map.set(task.issueNumber, task);
       }
@@ -603,6 +629,23 @@ export default function App(): JSX.Element {
     setRepoSwitcherOpen(true);
   }
 
+  function resetLocalTaskDraft(): void {
+    setLocalTaskTitle('');
+    setLocalTaskBody('');
+    setLocalTaskType('feature');
+  }
+
+  function handleOpenLocalTask(): void {
+    setError(undefined);
+    setLocalTaskOpen(true);
+  }
+
+  function handleCloseLocalTask(): void {
+    setLocalTaskOpen(false);
+    setCreatingLocalTask(false);
+    resetLocalTaskDraft();
+  }
+
   async function handleConfirmRepoSwitch(): Promise<void> {
     const changed = await handleRepoChange(repoCandidate);
     if (changed) {
@@ -627,6 +670,40 @@ export default function App(): JSX.Element {
     } catch (err) {
       const message = err instanceof Error ? err.message : '任务创建失败';
       setError(message);
+    }
+  }
+
+  async function handleCreateLocalTask(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!snapshot.selectedRepo) {
+      setError('请先选择仓库');
+      return;
+    }
+
+    const title = localTaskTitle.trim();
+    if (!title) {
+      setError('请输入任务标题');
+      return;
+    }
+
+    setCreatingLocalTask(true);
+    setError(undefined);
+    try {
+      const task = await enqueueTask({
+        source: 'local',
+        repoFullName: snapshot.selectedRepo.fullName,
+        taskType: localTaskType,
+        title,
+        body: localTaskBody.trim()
+      });
+      setActiveTaskId(task.id);
+      setWorkspaceView('tasks');
+      handleCloseLocalTask();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '本地任务创建失败';
+      setError(message);
+    } finally {
+      setCreatingLocalTask(false);
     }
   }
 
@@ -899,6 +976,83 @@ export default function App(): JSX.Element {
               <button className="ghost" type="submit" disabled={loading || refreshing}>
                 跳转
               </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {localTaskOpen ? (
+        <div className="repo-modal-mask" onClick={handleCloseLocalTask}>
+          <div className="local-task-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="local-task-modal-head">
+              <div>
+                <p className="eyebrow">LOCAL TASK</p>
+                <h3>本地录入任务</h3>
+                <p className="muted">
+                  任务会直接进入当前仓库队列，并沿用现有实现、Review 和提交流程。
+                </p>
+              </div>
+              <button
+                className="ghost icon-btn"
+                type="button"
+                onClick={handleCloseLocalTask}
+                aria-label="关闭本地任务录入"
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="local-task-repo-card">
+              <span>当前仓库</span>
+              <strong>{snapshot.selectedRepo?.fullName ?? '未选择仓库'}</strong>
+            </div>
+
+            <form className="local-task-form" onSubmit={(event) => void handleCreateLocalTask(event)}>
+              <div className="local-task-type-switch" aria-label="任务类型">
+                <button
+                  type="button"
+                  className={localTaskType === 'feature' ? 'is-active' : ''}
+                  onClick={() => setLocalTaskType('feature')}
+                >
+                  功能开发
+                </button>
+                <button
+                  type="button"
+                  className={localTaskType === 'bugfix' ? 'is-active' : ''}
+                  onClick={() => setLocalTaskType('bugfix')}
+                >
+                  问题修复
+                </button>
+              </div>
+
+              <label className="local-task-field">
+                <span>任务标题</span>
+                <input
+                  value={localTaskTitle}
+                  onChange={(event) => setLocalTaskTitle(event.target.value)}
+                  placeholder="例如：补一个本地导入入口"
+                  autoFocus
+                />
+              </label>
+
+              <label className="local-task-field">
+                <span>任务说明</span>
+                <textarea
+                  value={localTaskBody}
+                  onChange={(event) => setLocalTaskBody(event.target.value)}
+                  placeholder="补充背景、目标、验收标准或注意事项。"
+                  rows={7}
+                />
+              </label>
+
+              <div className="local-task-modal-actions">
+                <button type="submit" disabled={creatingLocalTask || !snapshot.selectedRepo}>
+                  {creatingLocalTask ? '加入中...' : '加入队列'}
+                </button>
+                <button className="ghost" type="button" onClick={handleCloseLocalTask}>
+                  取消
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -1394,7 +1548,7 @@ export default function App(): JSX.Element {
                     <p>
                       {workspaceView === 'tasks'
                         ? '左侧切换任务，右侧持续查看执行态。'
-                        : '自动模式下可人工查看候选 Issue，必要时手动发起任务。'}
+                        : '自动模式下可人工查看候选 Issue，或直接本地录入任务。'}
                     </p>
                   </div>
                   <div className="sidebar-switch" aria-label="左侧列表切换">
@@ -1419,6 +1573,21 @@ export default function App(): JSX.Element {
                   </div>
                 </div>
 
+                <div className="manual-entry-card">
+                  <div className="manual-entry-copy">
+                    <span className="manual-entry-kicker">Manual</span>
+                    <strong>本地录入任务</strong>
+                    <small>
+                      直接描述要在 {snapshot.selectedRepo?.name ?? '当前仓库'} 完成的事项，不必先建
+                      Issue。
+                    </small>
+                  </div>
+                  <button type="button" className="ghost manual-entry-btn" onClick={handleOpenLocalTask}>
+                    <Plus aria-hidden="true" />
+                    新建
+                  </button>
+                </div>
+
                 {workspaceView === 'tasks' ? (
                   <div className="task-queue-column">
                     <div className="task-section-label">
@@ -1432,11 +1601,14 @@ export default function App(): JSX.Element {
                           className={`task-item ${activeTask?.id === task.id ? 'active' : ''}`}
                           onClick={() => setActiveTaskId(task.id)}
                         >
-                          <p>
-                            #{task.issueNumber} {task.issueTitle}
-                          </p>
+                          <p>{formatTaskTitle(task)}</p>
                           <div>
-                            <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
+                            <div className="task-item-badges">
+                              <span className={`task-origin-badge task-origin-${task.source}`}>
+                                {taskSourceLabel(task.source)}
+                              </span>
+                              <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
+                            </div>
                             <small>{formatTaskListTime(task)}</small>
                           </div>
                           {task.result?.error ? (
@@ -1538,7 +1710,7 @@ export default function App(): JSX.Element {
                   <div className="task-rail-header">
                     <div>
                       <p className="eyebrow">Run Console</p>
-                      <h4>{activeTask ? `#${activeTask.issueNumber}` : '等待任务'}</h4>
+                      <h4>{formatTaskReference(activeTask)}</h4>
                     </div>
                     <div className="task-rail-header-right">
                       {activeTask ? (
@@ -1561,7 +1733,12 @@ export default function App(): JSX.Element {
                   {activeTask ? (
                     <div className="task-detail task-detail-main">
                       <div className="task-meta">
-                        <h4>{activeTask.issueTitle}</h4>
+                        <div className="task-meta-copy">
+                          <h4>{activeTask.issueTitle}</h4>
+                          <p className="task-meta-context">
+                            {taskSourceLabel(activeTask.source)} · {activeTask.repoFullName}
+                          </p>
+                        </div>
                         {activeTask.status === 'pending' || activeTask.status === 'running' ? (
                           <button className="ghost" onClick={() => void cancelTask(activeTask.id)}>
                             取消任务
@@ -1571,6 +1748,13 @@ export default function App(): JSX.Element {
 
                       {activeTask.result?.error ? (
                         <div className="task-error-banner">{activeTask.result.error}</div>
+                      ) : null}
+
+                      {activeTask.source === 'local' && activeTask.taskBody ? (
+                        <section className="changes">
+                          <h5>任务说明</h5>
+                          <label className="task-body-text">{activeTask.taskBody}</label>
+                        </section>
                       ) : null}
 
                       {activeTask.changedFiles.length > 0 ? (
@@ -1641,10 +1825,15 @@ export default function App(): JSX.Element {
                   ) : (
                     <div className="empty-state empty-state-rail">
                       <strong>暂无任务</strong>
-                      <p className="muted">当前没有排队或执行中的任务。需要人工介入时，可切到 Issues 发起任务。</p>
-                      <button className="ghost" type="button" onClick={() => setWorkspaceView('issues')}>
-                        打开 Issues
-                      </button>
+                      <p className="muted">当前没有排队或执行中的任务。你可以直接本地录入，或者从 Issues 发起。</p>
+                      <div className="empty-state-actions">
+                        <button className="ghost" type="button" onClick={handleOpenLocalTask}>
+                          本地录入
+                        </button>
+                        <button className="ghost" type="button" onClick={() => setWorkspaceView('issues')}>
+                          打开 Issues
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

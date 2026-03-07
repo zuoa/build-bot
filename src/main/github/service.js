@@ -215,14 +215,11 @@ async function getRepoBranchContext(repoFullName) {
     };
 }
 export function buildBranchName(issueNumber, issueTitle) {
-    const slug = issueTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 40);
-    const base = `gitagent/issue-${issueNumber}-${slug || 'task'}`;
-    return base.slice(0, 60);
+    return buildTaskBranchName({
+        source: 'issue',
+        issueNumber,
+        issueTitle
+    });
 }
 const BRANCH_MAX_LENGTH = 60;
 function isRefAlreadyExistsError(error) {
@@ -338,6 +335,25 @@ async function createBranchRef(context, branchName, commitSha) {
     }
 }
 export async function createBranchForIssue(context, issueNumber, issueTitle) {
+    return createBranchForTask(context, {
+        source: 'issue',
+        issueNumber,
+        issueTitle
+    });
+}
+export function buildTaskBranchName(params) {
+    const slug = params.issueTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40);
+    const base = params.source === 'local'
+        ? `gitagent/local-${slug || 'task'}`
+        : `gitagent/issue-${params.issueNumber ?? 0}-${slug || 'task'}`;
+    return base.slice(0, 60);
+}
+export async function createBranchForTask(context, params) {
     const octokit = getOctokit();
     const baseBranch = context.defaultBranch;
     const { data: branchData } = await octokit.rest.repos.getBranch({
@@ -345,7 +361,7 @@ export async function createBranchForIssue(context, issueNumber, issueTitle) {
         repo: context.fork.repo,
         branch: baseBranch
     });
-    const baseName = buildBranchName(issueNumber, issueTitle);
+    const baseName = buildTaskBranchName(params);
     const existingBranches = await listIssueBranches(context, baseName);
     // 1) Reuse the branch with an open PR first.
     for (const branch of existingBranches) {
@@ -439,14 +455,18 @@ export async function createPullRequest(params) {
             existed: true
         };
     }
+    const source = params.source ?? 'issue';
     const titlePrefix = params.taskType === 'feature' ? 'Feat' : 'Fix';
-    const title = `[GitAgent] ${titlePrefix}: #${params.issueNumber} ${params.issueTitle}`.slice(0, 120);
+    const title = source === 'local'
+        ? `[GitAgent] ${titlePrefix}: ${params.issueTitle}`.slice(0, 120)
+        : `[GitAgent] ${titlePrefix}: #${params.issueNumber} ${params.issueTitle}`.slice(0, 120);
     const body = [
         '## 修复说明',
         params.summary.trim() || '由 GitAgent Desktop MVP 自动生成',
         '',
-        '## 关联 Issue',
-        `Closes #${params.issueNumber}`,
+        ...(source === 'local'
+            ? ['## 任务来源', '本次改动来自 BuildBot Desktop 的本地录入任务。']
+            : ['## 关联 Issue', `Closes #${params.issueNumber}`]),
         '',
         '## 变更文件列表',
         ...params.changedFiles.map((file) => `- ${file}`),

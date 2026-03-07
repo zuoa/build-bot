@@ -77,6 +77,9 @@ function normalizeChangedFiles(value) {
     })
         .filter((entry) => Boolean(entry));
 }
+function normalizeTaskSource(value) {
+    return value === 'local' ? 'local' : 'issue';
+}
 function normalizeTask(value) {
     if (!value || typeof value !== 'object') {
         return undefined;
@@ -93,9 +96,11 @@ function normalizeTask(value) {
     }
     return {
         id: task.id,
+        source: normalizeTaskSource(task.source),
         repoFullName: task.repoFullName,
         issueNumber: task.issueNumber,
         issueTitle: task.issueTitle,
+        taskBody: typeof task.taskBody === 'string' ? task.taskBody : undefined,
         taskType: task.taskType,
         status: task.status,
         startedAt: normalizeTimestamp(task.startedAt),

@@ -2,6 +2,7 @@ export type TaskType = 'bugfix' | 'feature';
 export type AgentProvider = 'claude' | 'codex';
 export type ReviewStrictness = 'strict' | 'normal' | 'lenient';
 export type SubmissionMode = 'branch' | 'pr';
+export type TaskSource = 'issue' | 'local';
 
 export interface AgentRoleSettings {
   implementationProvider: AgentProvider;
@@ -108,9 +109,11 @@ export interface TaskResult {
 
 export interface TaskEntity {
   id: string;
+  source: TaskSource;
   repoFullName: string;
   issueNumber: number;
   issueTitle: string;
+  taskBody?: string;
   taskType: TaskType;
   status: TaskStatus;
   startedAt?: number;
@@ -122,12 +125,23 @@ export interface TaskEntity {
   result?: TaskResult;
 }
 
-export interface EnqueueTaskInput {
+export interface IssueTaskInput {
   repoFullName: string;
   issueNumber: number;
   taskType: TaskType;
+  source?: 'issue';
   customGuidelines?: string;
 }
+
+export interface LocalTaskInput {
+  repoFullName: string;
+  taskType: TaskType;
+  source: 'local';
+  title: string;
+  body?: string;
+}
+
+export type EnqueueTaskInput = IssueTaskInput | LocalTaskInput;
 
 export interface AppStateSnapshot {
   account?: AuthSession;

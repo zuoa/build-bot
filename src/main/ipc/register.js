@@ -120,6 +120,9 @@ export function registerIpcHandlers(mainWindow) {
         return detail;
     });
     ipcMain.handle(IPC_CHANNELS.ENQUEUE_TASK, async (_, input) => {
+        if (input.source === 'local') {
+            return taskManager.enqueue(input, input.title);
+        }
         const issue = await getIssueDetail(input.repoFullName, input.issueNumber);
         mainState.setSelectedIssue(issue);
         return taskManager.enqueue(input, issue.title);

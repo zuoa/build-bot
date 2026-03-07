@@ -4,6 +4,7 @@ import type {
   IssueFilter,
   IssueSummary,
   RepoSummary,
+  TaskSource,
   TaskType
 } from '../../shared/types';
 import { getAccount, getOctokit } from './client';
@@ -303,15 +304,11 @@ async function getRepoBranchContext(repoFullName: string): Promise<RepoBranchCon
 }
 
 export function buildBranchName(issueNumber: number, issueTitle: string): string {
-  const slug = issueTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
-
-  const base = `gitagent/issue-${issueNumber}-${slug || 'task'}`;
-  return base.slice(0, 60);
+  return buildTaskBranchName({
+    source: 'issue',
+    issueNumber,
+    issueTitle
+  });
 }
 
 interface IssueBranchInfo {
@@ -461,6 +458,40 @@ export async function createBranchForIssue(
   issueNumber: number,
   issueTitle: string
 ): Promise<string> {
+  return createBranchForTask(context, {
+    source: 'issue',
+    issueNumber,
+    issueTitle
+  });
+}
+
+export function buildTaskBranchName(params: {
+  source: TaskSource;
+  issueNumber?: number;
+  issueTitle: string;
+}): string {
+  const slug = params.issueTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
+
+  const base =
+    params.source === 'local'
+      ? `gitagent/local-${slug || 'task'}`
+      : `gitagent/issue-${params.issueNumber ?? 0}-${slug || 'task'}`;
+  return base.slice(0, 60);
+}
+
+export async function createBranchForTask(
+  context: ForkContext,
+  params: {
+    source: TaskSource;
+    issueNumber?: number;
+    issueTitle: string;
+  }
+): Promise<string> {
   const octokit = getOctokit();
   const baseBranch = context.defaultBranch;
   const { data: branchData } = await octokit.rest.repos.getBranch({
@@ -469,7 +500,7 @@ export async function createBranchForIssue(
     branch: baseBranch
   });
 
-  const baseName = buildBranchName(issueNumber, issueTitle);
+  const baseName = buildTaskBranchName(params);
   const existingBranches = await listIssueBranches(context, baseName);
 
   // 1) Reuse the branch with an open PR first.
@@ -565,9 +596,10 @@ export async function fetchReadmeHead(repoFullName: string): Promise<string> {
 export async function createPullRequest(params: {
   context: ForkContext;
   branchName: string;
-  issueNumber: number;
+  issueNumber?: number;
   issueTitle: string;
   taskType: TaskType;
+  source?: TaskSource;
   changedFiles: string[];
   summary: string;
 }): Promise<PullRequestResult> {
@@ -590,18 +622,20 @@ export async function createPullRequest(params: {
     };
   }
 
+  const source = params.source ?? 'issue';
   const titlePrefix = params.taskType === 'feature' ? 'Feat' : 'Fix';
-  const title = `[GitAgent] ${titlePrefix}: #${params.issueNumber} ${params.issueTitle}`.slice(
-    0,
-    120
-  );
+  const title =
+    source === 'local'
+      ? `[GitAgent] ${titlePrefix}: ${params.issueTitle}`.slice(0, 120)
+      : `[GitAgent] ${titlePrefix}: #${params.issueNumber} ${params.issueTitle}`.slice(0, 120);
 
   const body = [
     '## 修复说明',
     params.summary.trim() || '由 GitAgent Desktop MVP 自动生成',
     '',
-    '## 关联 Issue',
-    `Closes #${params.issueNumber}`,
+    ...(source === 'local'
+      ? ['## 任务来源', '本次改动来自 BuildBot Desktop 的本地录入任务。']
+      : ['## 关联 Issue', `Closes #${params.issueNumber}`]),
     '',
     '## 变更文件列表',
     ...params.changedFiles.map((file) => `- ${file}`),

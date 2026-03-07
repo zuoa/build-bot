@@ -229,7 +229,7 @@ export async function getFileDiffSummary(workspacePath, files) {
     }
     return summaries.join('\n');
 }
-function buildCommitMessage(taskType, issueTitle, issueNumber) {
+function buildCommitMessage(taskType, issueTitle, issueNumber, source) {
     const prefix = taskType === 'feature' ? 'feat' : 'fix';
     const normalized = issueTitle
         .toLowerCase()
@@ -237,6 +237,9 @@ function buildCommitMessage(taskType, issueTitle, issueNumber) {
         .replace(/[^a-z0-9\u4e00-\u9fa5 -]/gi, '')
         .trim();
     const base = `${prefix}: ${normalized}`.slice(0, 56).trim();
+    if (source === 'local') {
+        return base.slice(0, 72);
+    }
     const suffix = ` (closes #${issueNumber})`;
     return `${base}${suffix}`.slice(0, 72);
 }
@@ -246,7 +249,7 @@ export async function commitAndPush(params) {
     }
     const git = simpleGit(params.workspacePath);
     await git.add(params.selectedFiles);
-    const commitMessage = buildCommitMessage(params.taskType, params.issueTitle, params.issueNumber);
+    const commitMessage = buildCommitMessage(params.taskType, params.issueTitle, params.issueNumber, params.source ?? 'issue');
     await git.commit(commitMessage);
     await git.push('origin', params.branchName);
     const commitSha = (await git.revparse(['HEAD'])).trim();

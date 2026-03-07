@@ -3,7 +3,7 @@ import { buildLogDedupKey, normalizeVisibleLogText } from '../../shared/log-dedu
 import { buildTaskProcessComment } from '../../shared/task-process-comment';
 import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
-import { addLabelToIssue, buildBranchUrl, createIssueComment, createBranchForIssue, createPullRequest, ensureDirectBranch, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
+import { addLabelToIssue, buildBranchUrl, createIssueComment, createBranchForTask, createPullRequest, ensureDirectBranch, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
 import { assessIssueRisk, buildHumanConfirmationComment, HUMAN_CONFIRMATION_LABEL } from '../security/issue-guard';
 import { getAgentSettings } from '../settings/service';
 import { mainState } from '../state';
@@ -60,11 +60,17 @@ export class TaskManager {
         if (this.queue.length >= 20) {
             throw new Error('队列最多支持 20 个任务');
         }
+        const source = input.source === 'local' ? 'local' : 'issue';
+        const issueNumber = input.source === 'local' ? 0 : input.issueNumber;
+        const taskTitle = input.source === 'local' ? input.title.trim() || '未命名任务' : issueTitle || `Issue #${input.issueNumber}`;
+        const taskBody = input.source === 'local' ? input.body?.trim() : undefined;
         const task = {
             id: randomUUID(),
+            source,
             repoFullName: input.repoFullName,
-            issueNumber: input.issueNumber,
-            issueTitle: issueTitle || `Issue #${input.issueNumber}`,
+            issueNumber,
+            issueTitle: taskTitle,
+            taskBody,
             taskType: input.taskType,
             status: 'pending',
             logs: [],
@@ -97,11 +103,14 @@ export class TaskManager {
             selectedFiles,
             taskType: task.taskType,
             issueTitle: task.issueTitle,
-            issueNumber: task.issueNumber
+            issueNumber: task.issueNumber,
+            source: task.source
         });
         let next;
         if (submissionMode === 'pr') {
-            const summary = `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
+            const summary = task.source === 'local'
+                ? `AI 已根据本地录入任务完成代码改动。\n\n**变更统计：**\n${diffSummary}`
+                : `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
             const context = forkContext ?? (await ensureFork(task.repoFullName));
             const pr = await createPullRequest({
                 context,
@@ -109,6 +118,7 @@ export class TaskManager {
                 issueNumber: task.issueNumber,
                 issueTitle: task.issueTitle,
                 taskType: task.taskType,
+                source: task.source,
                 changedFiles: selectedFiles,
                 summary
             });
@@ -142,7 +152,9 @@ export class TaskManager {
                 text: `分支提交成功: ${task.branchName}`
             });
         }
-        await this.publishTaskProcessComment(task.id, selectedFiles, diffSummary);
+        if (task.source === 'issue') {
+            await this.publishTaskProcessComment(task.id, selectedFiles, diffSummary);
+        }
         this.emitTask(next.id);
         this.scheduleWorkspaceCleanup(task.id, task.workspacePath);
         return mainState.getTask(task.id);
@@ -245,7 +257,7 @@ export class TaskManager {
             const reviewOutput = await this.runAgent({
                 taskId: params.taskId,
                 cwd: params.workspacePath,
-                prompt: this.buildReviewPrompt(params.issue, params.readmeHead, params.taskType, changedFiles, diffSummary, round, params.reviewStrictness),
+                prompt: this.buildReviewPrompt(params.promptContext, params.readmeHead, params.taskType, changedFiles, diffSummary, round, params.reviewStrictness),
                 taskType: params.taskType,
                 provider: params.reviewProvider,
                 signal: params.signal,
@@ -277,7 +289,7 @@ export class TaskManager {
             await this.runAgent({
                 taskId: params.taskId,
                 cwd: params.workspacePath,
-                prompt: this.buildRevisionPrompt(params.issue, params.readmeHead, params.taskType, changedFiles, diffSummary, decision, round),
+                prompt: this.buildRevisionPrompt(params.promptContext, params.readmeHead, params.taskType, changedFiles, diffSummary, decision, round),
                 taskType: params.taskType,
                 provider: params.implementationProvider,
                 signal: params.signal,
@@ -431,16 +443,25 @@ export class TaskManager {
             if (agentSettings.reviewProvider !== agentSettings.implementationProvider) {
                 await checkAgentReady(agentSettings.reviewProvider);
             }
-            const issue = await getIssueDetail(task.repoFullName, task.issueNumber);
-            this.appendLog(taskId, { level: 'info', text: '开始执行 Issue 安全检查' });
-            const risk = assessIssueRisk(issue);
-            if (risk.blocked) {
+            const promptContext = await this.resolvePromptContext(task);
+            if (task.source === 'issue') {
+                const issue = await getIssueDetail(task.repoFullName, task.issueNumber);
+                this.appendLog(taskId, { level: 'info', text: '开始执行 Issue 安全检查' });
+                const risk = assessIssueRisk(issue);
+                if (risk.blocked) {
+                    this.appendLog(taskId, {
+                        level: 'error',
+                        text: `安全检查命中，任务已转人工确认：${risk.reasons.join('；')}`
+                    });
+                    await this.moveTaskToHumanConfirmation(taskId, issue, risk.reasons);
+                    return;
+                }
+            }
+            else {
                 this.appendLog(taskId, {
-                    level: 'error',
-                    text: `安全检查命中，任务已转人工确认：${risk.reasons.join('；')}`
+                    level: 'info',
+                    text: '已载入本地录入任务，跳过 Issue 安全检查与评论写回'
                 });
-                await this.moveTaskToHumanConfirmation(taskId, issue, risk.reasons);
-                return;
             }
             const submissionMode = agentSettings.submissionMode;
             let branchName;
@@ -451,7 +472,11 @@ export class TaskManager {
                 forkContext = await ensureFork(task.repoFullName);
                 cloneContext = forkContext;
                 this.appendLog(taskId, { level: 'info', text: '开始准备任务分支' });
-                branchName = await createBranchForIssue(forkContext, task.issueNumber, task.issueTitle);
+                branchName = await createBranchForTask(forkContext, {
+                    source: task.source,
+                    issueNumber: task.issueNumber,
+                    issueTitle: task.issueTitle
+                });
             }
             else {
                 this.appendLog(taskId, {
@@ -480,7 +505,7 @@ export class TaskManager {
             mainState.patchTask(taskId, { branchName, workspacePath });
             this.emitTask(taskId);
             const readmeHead = await fetchReadmeHead(task.repoFullName);
-            const prompt = this.buildImplementationPrompt(issue, readmeHead, task.taskType);
+            const prompt = this.buildImplementationPrompt(promptContext, readmeHead, task.taskType);
             this.appendLog(taskId, {
                 level: 'info',
                 text: `${agentProviderLabel(agentSettings.implementationProvider)} 开始执行代码实现`
@@ -520,7 +545,7 @@ export class TaskManager {
             const approvedFiles = await this.runReviewLoop({
                 taskId,
                 workspacePath,
-                issue,
+                promptContext,
                 readmeHead,
                 taskType: task.taskType,
                 reviewProvider: agentSettings.reviewProvider,
@@ -565,22 +590,29 @@ export class TaskManager {
             this.runtime.delete(taskId);
         }
     }
-    buildImplementationPrompt(issue, readmeHead, taskType) {
+    buildImplementationPrompt(context, readmeHead, taskType) {
         const modeInstruction = taskType === 'feature'
             ? '你现在在 Feature 开发模式：实现功能并补充必要测试。'
             : '你现在在 Bug Fix 模式：定位根因，最小化改动并确保回归风险可控。';
-        const comments = issue.comments
+        const targetLabel = context.source === 'local'
+            ? `本地录入任务：${context.title}`
+            : `Issue #${context.issueNumber}: ${context.title}`;
+        const bodyLabel = context.source === 'local' ? '任务说明：' : 'Issue 正文：';
+        const comments = context.comments
             .map((comment) => `- [${comment.author}] ${comment.body}`)
             .join('\n');
         return [
             '你是 GitAgent Desktop 的代码执行代理，请直接修改当前仓库。',
             modeInstruction,
+            context.source === 'local'
+                ? '任务来源：本地录入。请结合任务说明、README 和代码现状完成实现。'
+                : '任务来源：GitHub Issue。请结合 Issue 正文、评论、README 和代码现状完成实现。',
             '',
-            `Issue #${issue.number}: ${issue.title}`,
-            'Issue 正文：',
-            issue.body || '(empty)',
+            targetLabel,
+            bodyLabel,
+            context.body || '(empty)',
             '',
-            'Issue 评论：',
+            '任务补充信息：',
             comments || '(no comments)',
             '',
             'README 前 500 行：',
@@ -593,12 +625,16 @@ export class TaskManager {
             '4) 结束时给出简要变更说明'
         ].join('\n');
     }
-    buildReviewPrompt(issue, readmeHead, taskType, changedFiles, diffSummary, round, strictness) {
+    buildReviewPrompt(context, readmeHead, taskType, changedFiles, diffSummary, round, strictness) {
         const modeInstruction = taskType === 'feature'
             ? '这是一个 Feature 任务，请重点检查需求覆盖、边界条件和必要测试。'
             : '这是一个 Bug Fix 任务，请重点检查根因是否真正解决、是否有回归风险和缺失测试。';
+        const targetLabel = context.source === 'local'
+            ? `本地录入任务：${context.title}`
+            : `Issue #${context.issueNumber}: ${context.title}`;
+        const bodyLabel = context.source === 'local' ? '任务说明：' : 'Issue 正文：';
         const strictnessInstruction = this.buildReviewStrictnessInstruction(strictness, taskType);
-        const comments = issue.comments
+        const comments = context.comments
             .map((comment) => `- [${comment.author}] ${comment.body}`)
             .join('\n');
         return [
@@ -606,13 +642,16 @@ export class TaskManager {
             '当前仓库已经存在未提交代码改动。你的职责是只做代码审查，不要修改任何文件，不要执行 git commit/push。',
             modeInstruction,
             strictnessInstruction,
+            context.source === 'local'
+                ? '当前审查对象来自本地录入任务，请按任务说明和代码改动判断是否可直接提交。'
+                : '当前审查对象来自 GitHub Issue，请按需求完成度和代码改动判断是否可直接提交。',
             '',
             `当前是第 ${round} 轮审查。`,
-            `Issue #${issue.number}: ${issue.title}`,
-            'Issue 正文：',
-            issue.body || '(empty)',
+            targetLabel,
+            bodyLabel,
+            context.body || '(empty)',
             '',
-            'Issue 评论：',
+            '任务补充信息：',
             comments || '(no comments)',
             '',
             'README 前 500 行：',
@@ -639,11 +678,15 @@ export class TaskManager {
             '- 如果 FAIL，逐条列出必须修改的问题'
         ].join('\n');
     }
-    buildRevisionPrompt(issue, readmeHead, taskType, changedFiles, diffSummary, decision, round) {
+    buildRevisionPrompt(context, readmeHead, taskType, changedFiles, diffSummary, decision, round) {
         const modeInstruction = taskType === 'feature'
             ? '你现在在 Feature 返工模式：在保留已有有效实现的前提下，修复 Review Agent 指出的必须修改项，并补充必要测试。'
             : '你现在在 Bug Fix 返工模式：针对 Review Agent 指出的根因、回归和测试问题继续修改，保持改动尽量收敛。';
-        const comments = issue.comments
+        const targetLabel = context.source === 'local'
+            ? `本地录入任务：${context.title}`
+            : `Issue #${context.issueNumber}: ${context.title}`;
+        const bodyLabel = context.source === 'local' ? '任务说明：' : 'Issue 正文：';
+        const comments = context.comments
             .map((comment) => `- [${comment.author}] ${comment.body}`)
             .join('\n');
         const feedbackText = decision.feedback.length > 0
@@ -654,11 +697,11 @@ export class TaskManager {
             modeInstruction,
             '',
             `当前是第 ${round} 次返工。`,
-            `Issue #${issue.number}: ${issue.title}`,
-            'Issue 正文：',
-            issue.body || '(empty)',
+            targetLabel,
+            bodyLabel,
+            context.body || '(empty)',
             '',
-            'Issue 评论：',
+            '任务补充信息：',
             comments || '(no comments)',
             '',
             'README 前 500 行：',
@@ -679,7 +722,9 @@ export class TaskManager {
             '1) 基于当前工作区继续修改，不要新建提交，不要 push',
             '2) 必须解决上面所有必须修改项，避免只做表面修补',
             '3) 如有必要，补充或更新测试',
-            '4) 保留与当前 Issue 相关的有效改动，不要无意义回滚',
+            context.source === 'local'
+                ? '4) 保留与当前本地任务相关的有效改动，不要无意义回滚'
+                : '4) 保留与当前 Issue 相关的有效改动，不要无意义回滚',
             '5) 结束时给出简要变更说明'
         ].join('\n');
     }
@@ -712,6 +757,27 @@ export class TaskManager {
                     '默认不要 FAIL 的情形：非关键优化项、主观风格问题、可后续迭代的小改进。'
                 ].join('\n');
         }
+    }
+    async resolvePromptContext(task) {
+        if (task.source === 'local') {
+            return {
+                source: 'local',
+                title: task.issueTitle,
+                body: task.taskBody ?? '',
+                comments: []
+            };
+        }
+        const issue = await getIssueDetail(task.repoFullName, task.issueNumber);
+        return {
+            source: 'issue',
+            title: issue.title,
+            body: issue.body,
+            issueNumber: issue.number,
+            comments: issue.comments.map((comment) => ({
+                author: comment.author,
+                body: comment.body
+            }))
+        };
     }
 }
 let manager;

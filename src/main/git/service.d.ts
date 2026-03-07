@@ -1,4 +1,4 @@
-import type { TaskType } from '../../shared/types';
+import type { TaskSource, TaskType } from '../../shared/types';
 import type { ForkContext, RepoBranchContext } from '../github/service';
 export declare function cloneBranchWorkspace(params: {
     context: ForkContext | RepoBranchContext;
@@ -17,6 +17,7 @@ export declare function commitAndPush(params: {
     taskType: TaskType;
     issueTitle: string;
     issueNumber: number;
+    source?: TaskSource;
 }): Promise<{
     commitSha: string;
 }>;

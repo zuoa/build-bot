@@ -1,4 +1,4 @@
-import type { IssueDetail, IssueFilter, IssueSummary, RepoSummary, TaskType } from '../../shared/types';
+import type { IssueDetail, IssueFilter, IssueSummary, RepoSummary, TaskSource, TaskType } from '../../shared/types';
 interface RepoRef {
     owner: string;
     repo: string;
@@ -28,15 +28,26 @@ export declare function createIssueComment(repoFullName: string, issueNumber: nu
 export declare function ensureFork(repoFullName: string): Promise<ForkContext>;
 export declare function buildBranchName(issueNumber: number, issueTitle: string): string;
 export declare function createBranchForIssue(context: ForkContext, issueNumber: number, issueTitle: string): Promise<string>;
+export declare function buildTaskBranchName(params: {
+    source: TaskSource;
+    issueNumber?: number;
+    issueTitle: string;
+}): string;
+export declare function createBranchForTask(context: ForkContext, params: {
+    source: TaskSource;
+    issueNumber?: number;
+    issueTitle: string;
+}): Promise<string>;
 export declare function ensureDirectBranch(repoFullName: string, branchName: string): Promise<RepoBranchContext>;
 export declare function buildBranchUrl(repoFullName: string, branchName: string): string;
 export declare function fetchReadmeHead(repoFullName: string): Promise<string>;
 export declare function createPullRequest(params: {
     context: ForkContext;
     branchName: string;
-    issueNumber: number;
+    issueNumber?: number;
     issueTitle: string;
     taskType: TaskType;
+    source?: TaskSource;
     changedFiles: string[];
     summary: string;
 }): Promise<PullRequestResult>;

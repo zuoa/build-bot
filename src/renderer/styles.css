@@ -37,11 +37,13 @@ body {
 
 button,
 select,
-input {
+input,
+textarea {
   font: inherit;
 }
 
 input,
+textarea,
 select,
 button {
   height: 36px;
@@ -50,6 +52,12 @@ button {
   background: var(--surface);
   color: var(--ink);
   padding: 0 11px;
+}
+
+textarea {
+  min-height: 132px;
+  resize: vertical;
+  padding: 10px 11px;
 }
 
 input::placeholder {
@@ -610,6 +618,56 @@ button.ghost:hover {
   line-height: 1.5;
 }
 
+.manual-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 248, 250, 0.96)),
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 50%);
+}
+
+.manual-entry-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.manual-entry-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.manual-entry-copy strong {
+  font-size: 14px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.manual-entry-copy small {
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.manual-entry-btn {
+  min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.manual-entry-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .sidebar-switch {
   width: 100%;
   display: inline-flex;
@@ -748,6 +806,37 @@ button.ghost:hover {
 
 .task-item > div small {
   margin: 0;
+}
+
+.task-item-badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.task-origin-issue {
+  background: rgba(17, 24, 39, 0.05);
+  color: var(--ink-soft);
+}
+
+.task-origin-local {
+  background: rgba(240, 253, 250, 0.95);
+  color: #115e59;
+  border-color: rgba(15, 118, 110, 0.16);
 }
 
 .labels {
@@ -1018,10 +1107,21 @@ button.ghost:hover {
   gap: 8px;
 }
 
+.task-meta-copy {
+  min-width: 0;
+}
+
 .task-meta h4 {
   margin: 0;
   font-size: 14px;
   line-height: 1.35;
+}
+
+.task-meta-context {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .task-error-banner {
@@ -1051,6 +1151,12 @@ button.ghost:hover {
   align-items: center;
   gap: 8px;
   font-size: 12px;
+}
+
+.task-body-text {
+  align-items: flex-start;
+  white-space: pre-wrap;
+  line-height: 1.55;
 }
 
 .changes input {
@@ -1223,6 +1329,115 @@ button.ghost:hover {
   box-shadow: var(--shadow-sm);
   display: grid;
   gap: 10px;
+}
+
+.local-task-modal {
+  width: min(620px, 100%);
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 18px;
+  box-shadow:
+    0 24px 64px rgba(15, 23, 42, 0.18),
+    0 2px 10px rgba(15, 23, 42, 0.08);
+  display: grid;
+  gap: 14px;
+}
+
+.local-task-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.local-task-modal-head h3 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.local-task-modal-head .muted {
+  margin-top: 8px;
+  max-width: 440px;
+}
+
+.local-task-repo-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: #f8fafc;
+}
+
+.local-task-repo-card span {
+  font-size: 11px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.local-task-repo-card strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.local-task-form {
+  display: grid;
+  gap: 14px;
+}
+
+.local-task-type-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.local-task-type-switch button {
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-soft);
+  box-shadow: none;
+}
+
+.local-task-type-switch button:hover {
+  background: rgba(17, 24, 39, 0.04);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.local-task-type-switch button.is-active {
+  background: #111111;
+  border-color: #111111;
+  color: #ffffff;
+}
+
+.local-task-field {
+  display: grid;
+  gap: 7px;
+}
+
+.local-task-field span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.local-task-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .settings-modal {
@@ -1948,6 +2163,13 @@ button.ghost:hover {
   margin: 0;
 }
 
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 .empty,
 .muted {
   color: var(--ink-soft);
@@ -2027,6 +2249,12 @@ button.ghost:hover {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
+  .manual-entry-card,
+  .task-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .issue-modal {
     width: 100%;
     max-height: 90vh;
@@ -2096,6 +2324,19 @@ button.ghost:hover {
 
   .settings-nav-btn {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .local-task-modal {
+    width: 100%;
+    padding: 16px;
+  }
+
+  .local-task-modal-actions {
+    flex-direction: column;
+  }
+
+  .local-task-modal-actions button {
+    width: 100%;
   }
 
   .settings-nav-meta {

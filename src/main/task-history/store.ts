@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { TaskEntity, TaskFileChange, TaskLog, TaskStatus } from '../../shared/types';
+import type { TaskEntity, TaskFileChange, TaskLog, TaskSource, TaskStatus } from '../../shared/types';
 
 const TASK_HISTORY_FILE = 'task-history.json';
 const TASK_HISTORY_LIMIT = 200;
@@ -102,6 +102,10 @@ function normalizeChangedFiles(value: unknown): TaskFileChange[] {
     .filter((entry): entry is TaskFileChange => Boolean(entry));
 }
 
+function normalizeTaskSource(value: unknown): TaskSource {
+  return value === 'local' ? 'local' : 'issue';
+}
+
 function normalizeTask(value: unknown): TaskEntity | undefined {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -122,9 +126,11 @@ function normalizeTask(value: unknown): TaskEntity | undefined {
 
   return {
     id: task.id,
+    source: normalizeTaskSource(task.source),
     repoFullName: task.repoFullName,
     issueNumber: task.issueNumber,
     issueTitle: task.issueTitle,
+    taskBody: typeof task.taskBody === 'string' ? task.taskBody : undefined,
     taskType: task.taskType,
     status: task.status,
     startedAt: normalizeTimestamp(task.startedAt),

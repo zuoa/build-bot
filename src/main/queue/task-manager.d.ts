@@ -26,6 +26,7 @@ export declare class TaskManager {
     private buildReviewPrompt;
     private buildRevisionPrompt;
     private buildReviewStrictnessInstruction;
+    private resolvePromptContext;
 }
 export declare function initTaskManager(onTaskUpdate: TaskListener): TaskManager;
 export declare function getTaskManager(): TaskManager;
