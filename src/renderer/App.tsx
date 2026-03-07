@@ -982,7 +982,7 @@ export default function App(): JSX.Element {
       ) : null}
 
       {localTaskOpen ? (
-        <div className="repo-modal-mask" onClick={handleCloseLocalTask}>
+        <div className="repo-modal-mask">
           <div className="local-task-modal" onClick={(event) => event.stopPropagation()}>
             <div className="local-task-modal-head">
               <div>
