@@ -6,7 +6,8 @@ BuildBot Desktop 是一个基于 Electron 的本地桌面应用，用来把 GitH
 
 这个项目的目标不是做一个通用聊天界面，而是把“接 Issue -> 改代码 -> 审查 -> 提交结果”这条链路收敛成一个可重复运行的工程流程。
 
-![BuildBot Dock Icon](assets/buildbot-dock.png)
+![BuildBot](screenshots/login.jpg)
+
 
 ## 为什么做这个项目
 
