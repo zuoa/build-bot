@@ -1,5 +1,5 @@
 appId: com.gitagent.desktop
-productName: GitAgent Desktop
+productName: BuildBot Desktop
 files:
   - dist/**
   - dist-electron/**
