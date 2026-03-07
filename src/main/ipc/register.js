@@ -53,7 +53,10 @@ export function registerIpcHandlers(mainWindow) {
             enabled: Boolean(settings?.enabled),
             pollIntervalSec: typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
                 ? settings.pollIntervalSec
-                : 180
+                : 180,
+            includeLabels: Array.isArray(settings?.includeLabels)
+                ? settings.includeLabels.filter((item) => typeof item === 'string')
+                : ['bug', 'enhancement']
         });
     });
     ipcMain.handle(IPC_CHANNELS.SAVE_AGENT_SETTINGS, async (_, settings) => {

@@ -1,4 +1,5 @@
-import type { AutoModeSettings, IssueSummary, TaskType } from '../../shared/types';
+import { DEFAULT_AUTO_ENQUEUE_LABELS, hasAutoEnqueueLabel, inferTaskType } from '../../shared/issue-auto-enqueue';
+import type { AutoModeSettings } from '../../shared/types';
 import { listIssues } from '../github/service';
 import { getAutoModeSettings, saveAutoModeSettings } from '../settings/service';
 import { mainState } from '../state';
@@ -7,17 +8,11 @@ import { HUMAN_CONFIRMATION_LABEL } from '../security/issue-guard';
 
 const DEFAULT_AUTO_MODE_SETTINGS: AutoModeSettings = {
   enabled: false,
-  pollIntervalSec: 180
+  pollIntervalSec: 180,
+  includeLabels: DEFAULT_AUTO_ENQUEUE_LABELS
 };
 
 const AUTO_ENQUEUE_LIMIT_PER_TICK = 5;
-
-function inferTaskType(issue: IssueSummary): TaskType {
-  const labelText = issue.labels.map((item) => item.name).join(' ');
-  const source = `${issue.title} ${labelText}`.toLowerCase();
-  const bugHint = /(bug|fix|error|defect|crash|regression|故障|报错|修复|异常|崩溃)/;
-  return bugHint.test(source) ? 'bugfix' : 'feature';
-}
 
 export class AutoModeService {
   private settings: AutoModeSettings = DEFAULT_AUTO_MODE_SETTINGS;
@@ -95,6 +90,9 @@ export class AutoModeService {
           continue;
         }
         if (issue.labels.some((label) => label.name === HUMAN_CONFIRMATION_LABEL)) {
+          continue;
+        }
+        if (!hasAutoEnqueueLabel(issue, this.settings.includeLabels)) {
           continue;
         }
 

@@ -24,7 +24,10 @@ const desktopApi: DesktopApi = {
       pollIntervalSec:
         typeof settings?.pollIntervalSec === 'number' && Number.isFinite(settings.pollIntervalSec)
           ? settings.pollIntervalSec
-          : 180
+          : 180,
+      includeLabels: Array.isArray(settings?.includeLabels)
+        ? settings.includeLabels.filter((item): item is string => typeof item === 'string')
+        : ['bug', 'enhancement']
     };
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_AUTO_MODE_SETTINGS, normalized);
   },

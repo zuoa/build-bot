@@ -75,6 +75,7 @@ export interface IssueFilter {
 export interface AutoModeSettings {
   enabled: boolean;
   pollIntervalSec: number;
+  includeLabels: string[];
 }
 
 export type TaskStatus =

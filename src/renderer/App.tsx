@@ -16,6 +16,8 @@ import {
   X
 } from 'lucide-react';
 import { marked } from 'marked';
+import { appendAutoModeLabel, normalizeAutoModeLabel } from '../shared/auto-mode-labels';
+import { DEFAULT_AUTO_ENQUEUE_LABELS } from '../shared/issue-auto-enqueue';
 import type {
   AgentProvider,
   AgentProviderStatus,
@@ -203,6 +205,10 @@ export default function App(): JSX.Element {
   const [providerStatuses, setProviderStatuses] = useState<AgentProviderStatus[]>([]);
   const [autoModeEnabled, setAutoModeEnabled] = useState(false);
   const [autoModePollIntervalSec, setAutoModePollIntervalSec] = useState(180);
+  const [autoModeIncludeLabels, setAutoModeIncludeLabels] = useState<string[]>(
+    DEFAULT_AUTO_ENQUEUE_LABELS
+  );
+  const [autoModeLabelDraft, setAutoModeLabelDraft] = useState('');
   const [autoModeCountdown, setAutoModeCountdown] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string>();
@@ -214,6 +220,7 @@ export default function App(): JSX.Element {
   const agentSettingsSaveTimerRef = useRef<number>();
   const latestAgentSettingsSignatureRef = useRef('');
   const lastSavedAgentSettingsRef = useRef('');
+  const savedAutoModeIncludeLabelsRef = useRef<string[]>(DEFAULT_AUTO_ENQUEUE_LABELS);
 
   useEffect(() => {
     attachTaskListener();
@@ -246,6 +253,9 @@ export default function App(): JSX.Element {
       setProviderStatuses(settings.providerStatuses);
       setAutoModeEnabled(settings.autoMode.enabled);
       setAutoModePollIntervalSec(settings.autoMode.pollIntervalSec);
+      savedAutoModeIncludeLabelsRef.current = settings.autoMode.includeLabels;
+      setAutoModeIncludeLabels(settings.autoMode.includeLabels);
+      setAutoModeLabelDraft('');
     } catch (err) {
       const message = err instanceof Error ? err.message : '读取设置失败';
       setSettingsMessage(message);
@@ -385,6 +395,11 @@ export default function App(): JSX.Element {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [snapshot.issues]);
+
+  const autoModeLabelSuggestions = useMemo(() => {
+    const selected = new Set(autoModeIncludeLabels.map(normalizeAutoModeLabel));
+    return labelOptions.filter((label) => !selected.has(normalizeAutoModeLabel(label)));
+  }, [autoModeIncludeLabels, labelOptions]);
 
   const issueTaskMap = useMemo(() => {
     const map = new Map<number, TaskEntity>();
@@ -671,6 +686,7 @@ export default function App(): JSX.Element {
   async function persistAutoModeSettings(
     enabled: boolean,
     pollIntervalSec: number,
+    includeLabels: string[],
     withSettingsMessage: boolean
   ): Promise<void> {
     setSavingSettings(true);
@@ -681,12 +697,18 @@ export default function App(): JSX.Element {
       const normalized = Number.isFinite(pollIntervalSec) ? Math.round(pollIntervalSec) : 180;
       const saved = await window.desktopApi.saveAutoModeSettings({
         enabled,
-        pollIntervalSec: normalized
+        pollIntervalSec: normalized,
+        includeLabels
       });
+      savedAutoModeIncludeLabelsRef.current = saved.includeLabels;
       setAutoModeEnabled(saved.enabled);
       setAutoModePollIntervalSec(saved.pollIntervalSec);
       if (withSettingsMessage) {
-        setSettingsMessage(saved.enabled ? '自动模式已开启' : '自动模式已关闭');
+        setSettingsMessage(
+          saved.enabled
+            ? `自动模式已开启，标签：${saved.includeLabels.join(', ')}`
+            : '自动模式已关闭'
+        );
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : '自动模式保存失败';
@@ -701,7 +723,32 @@ export default function App(): JSX.Element {
 
   async function handleQuickToggleAutoMode(): Promise<void> {
     setError(undefined);
-    await persistAutoModeSettings(!autoModeEnabled, autoModePollIntervalSec, false);
+    await persistAutoModeSettings(
+      !autoModeEnabled,
+      autoModePollIntervalSec,
+      savedAutoModeIncludeLabelsRef.current,
+      false
+    );
+  }
+
+  function addAutoModeLabel(raw: string): void {
+    const next = appendAutoModeLabel(autoModeIncludeLabels, raw);
+    setAutoModeIncludeLabels(next);
+    setAutoModeLabelDraft('');
+  }
+
+  function removeAutoModeLabel(label: string): void {
+    setAutoModeIncludeLabels((current) =>
+      current.filter((item) => normalizeAutoModeLabel(item) !== normalizeAutoModeLabel(label))
+    );
+  }
+
+  async function saveAutoModeLabelWhitelist(): Promise<void> {
+    const next = appendAutoModeLabel(autoModeIncludeLabels, autoModeLabelDraft);
+    setAutoModeIncludeLabels(next);
+    setAutoModeLabelDraft('');
+    await persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, next, true);
+    setAutoModeIncludeLabels(next);
   }
 
   if (!initialized) {
@@ -1090,7 +1137,12 @@ export default function App(): JSX.Element {
                               checked={autoModeEnabled}
                               onChange={(event) => {
                                 setAutoModeEnabled(event.target.checked);
-                                void persistAutoModeSettings(event.target.checked, autoModePollIntervalSec, true);
+                                void persistAutoModeSettings(
+                                  event.target.checked,
+                                  autoModePollIntervalSec,
+                                  savedAutoModeIncludeLabelsRef.current,
+                                  true
+                                );
                               }}
                             />
                             启用自动模式
@@ -1136,18 +1188,136 @@ export default function App(): JSX.Element {
                                 setAutoModePollIntervalSec(value);
                               }}
                               onBlur={() => {
-                                void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true);
+                                void persistAutoModeSettings(
+                                  autoModeEnabled,
+                                  autoModePollIntervalSec,
+                                  savedAutoModeIncludeLabelsRef.current,
+                                  true
+                                );
                               }}
                             />
                             <button
                               className="ghost"
                               disabled={savingSettings}
-                              onClick={() => void persistAutoModeSettings(autoModeEnabled, autoModePollIntervalSec, true)}
+                              onClick={() =>
+                                void persistAutoModeSettings(
+                                  autoModeEnabled,
+                                  autoModePollIntervalSec,
+                                  savedAutoModeIncludeLabelsRef.current,
+                                  true
+                                )
+                              }
                             >
                               应用
                             </button>
                           </div>
                         </label>
+                      </section>
+
+                      <section className="settings-card">
+                        <div className="settings-card-head">
+                          <span className="settings-card-icon" aria-hidden="true">
+                            <Repeat />
+                          </span>
+                          <div>
+                            <h5>自动入队标签</h5>
+                            <p className="muted">只拉取包含这些标签的 Issue，支持回车快速添加。</p>
+                          </div>
+                        </div>
+                        <div className="settings-input-group">
+                          标签白名单
+                          <div className="settings-tag-editor">
+                            <div className="settings-tag-list">
+                              {autoModeIncludeLabels.map((label) => (
+                                <span key={label} className="settings-tag-chip">
+                                  {label}
+                                  <button
+                                    type="button"
+                                    className="settings-tag-remove"
+                                    aria-label={`移除标签 ${label}`}
+                                    onClick={() => removeAutoModeLabel(label)}
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              ))}
+                              <input
+                                type="text"
+                                className="settings-tag-input"
+                                value={autoModeLabelDraft}
+                                placeholder="输入标签后按回车"
+                                onChange={(event) => {
+                                  setAutoModeLabelDraft(event.target.value);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    addAutoModeLabel(autoModeLabelDraft);
+                                  } else if (
+                                    event.key === 'Backspace' &&
+                                    autoModeLabelDraft.length === 0 &&
+                                    autoModeIncludeLabels.length > 0
+                                  ) {
+                                    event.preventDefault();
+                                    removeAutoModeLabel(
+                                      autoModeIncludeLabels[autoModeIncludeLabels.length - 1]
+                                    );
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (autoModeLabelDraft.trim()) {
+                                    addAutoModeLabel(autoModeLabelDraft);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                          {autoModeLabelSuggestions.length > 0 ? (
+                            <div className="settings-tag-suggestions">
+                              {autoModeLabelSuggestions.slice(0, 8).map((label) => (
+                                <button
+                                  key={label}
+                                  type="button"
+                                  className="settings-tag-suggestion"
+                                  onClick={() => addAutoModeLabel(label)}
+                                >
+                                  + {label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="settings-input-row">
+                            <button
+                              className="ghost"
+                              type="button"
+                              onClick={() => addAutoModeLabel(autoModeLabelDraft)}
+                            >
+                              添加标签
+                            </button>
+                            <button
+                              className="ghost"
+                              type="button"
+                              onClick={() => setAutoModeIncludeLabels(DEFAULT_AUTO_ENQUEUE_LABELS)}
+                            >
+                              恢复默认
+                            </button>
+                            <button
+                              className="ghost"
+                              disabled={savingSettings}
+                              onClick={() => void saveAutoModeLabelWhitelist()}
+                            >
+                              保存
+                            </button>
+                          </div>
+                          <small className="settings-card-note">
+                            会自动规范成小写并去重；留空保存时会回退到默认值。
+                          </small>
+                          <small className="settings-card-note">
+                            {autoModeLabelSuggestions.length > 0
+                              ? '下方推荐来自当前仓库已拉取到的 Issue 标签。'
+                              : '当前仓库暂无可推荐标签。'}
+                          </small>
+                        </div>
                       </section>
                     </div>
                   </section>

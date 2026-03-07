@@ -65,6 +65,7 @@ export interface IssueFilter {
 export interface AutoModeSettings {
     enabled: boolean;
     pollIntervalSec: number;
+    includeLabels: string[];
 }
 export type TaskStatus = 'pending' | 'running' | 'awaiting_human_confirmation' | 'completed' | 'failed' | 'cancelled';
 export interface TaskLog {

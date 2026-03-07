@@ -7,11 +7,13 @@ const MAX_AUTO_POLL_INTERVAL_SEC = 60 * 60;
 const MIN_REVIEW_MAX_ROUNDS = 1;
 const MAX_REVIEW_MAX_ROUNDS = 8;
 const DEFAULT_DIRECT_BRANCH_NAME = 'develop';
+const DEFAULT_AUTO_INCLUDE_LABELS = ['bug', 'enhancement'];
 let cachedAutoModeSettings;
 let cachedAgentSettings;
 const DEFAULT_AUTO_MODE_SETTINGS = {
     enabled: false,
-    pollIntervalSec: 180
+    pollIntervalSec: 180,
+    includeLabels: DEFAULT_AUTO_INCLUDE_LABELS
 };
 const DEFAULT_AGENT_SETTINGS = {
     implementationProvider: 'claude',
@@ -31,8 +33,19 @@ function normalizeAutoPollIntervalSec(value) {
 function normalizeAutoModeSettings(input) {
     return {
         enabled: typeof input.enabled === 'boolean' ? input.enabled : DEFAULT_AUTO_MODE_SETTINGS.enabled,
-        pollIntervalSec: normalizeAutoPollIntervalSec(input.pollIntervalSec ?? DEFAULT_AUTO_MODE_SETTINGS.pollIntervalSec)
+        pollIntervalSec: normalizeAutoPollIntervalSec(input.pollIntervalSec ?? DEFAULT_AUTO_MODE_SETTINGS.pollIntervalSec),
+        includeLabels: normalizeAutoIncludeLabels(input.includeLabels)
     };
+}
+function normalizeAutoIncludeLabels(value) {
+    if (!Array.isArray(value)) {
+        return [...DEFAULT_AUTO_MODE_SETTINGS.includeLabels];
+    }
+    const normalized = Array.from(new Set(value
+        .filter((item) => typeof item === 'string')
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean)));
+    return normalized.length > 0 ? normalized : [...DEFAULT_AUTO_MODE_SETTINGS.includeLabels];
 }
 function normalizeReviewStrictness(value) {
     if (value === 'strict' || value === 'lenient') {
