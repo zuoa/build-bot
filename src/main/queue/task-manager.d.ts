@@ -8,6 +8,7 @@ export declare class TaskManager {
     constructor(onTaskUpdate: TaskListener);
     enqueue(input: EnqueueTaskInput, issueTitle: string): TaskEntity;
     private commitTaskChanges;
+    private publishTaskProcessComment;
     private isAgentRuntimeLog;
     private runAgent;
     private parseReviewDecision;

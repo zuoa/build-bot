@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { buildLogDedupKey, normalizeVisibleLogText } from '../../shared/log-dedupe';
+import { buildTaskProcessComment } from '../../shared/task-process-comment';
 import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
 import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import { addLabelToIssue, buildBranchUrl, createIssueComment, createBranchForIssue, createPullRequest, ensureDirectBranch, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
@@ -89,6 +90,7 @@ export class TaskManager {
             level: 'info',
             text: `开始提交 ${selectedFiles.length} 个文件`
         });
+        const diffSummary = await getFileDiffSummary(task.workspacePath, selectedFiles);
         const commit = await commitAndPush({
             workspacePath: task.workspacePath,
             branchName: task.branchName,
@@ -99,7 +101,6 @@ export class TaskManager {
         });
         let next;
         if (submissionMode === 'pr') {
-            const diffSummary = await getFileDiffSummary(task.workspacePath, selectedFiles);
             const summary = `AI 已根据 Issue 描述与评论完成代码改动。\n\n**变更统计：**\n${diffSummary}`;
             const context = forkContext ?? (await ensureFork(task.repoFullName));
             const pr = await createPullRequest({
@@ -141,9 +142,34 @@ export class TaskManager {
                 text: `分支提交成功: ${task.branchName}`
             });
         }
+        await this.publishTaskProcessComment(task.id, selectedFiles, diffSummary);
         this.emitTask(next.id);
         this.scheduleWorkspaceCleanup(task.id, task.workspacePath);
         return mainState.getTask(task.id);
+    }
+    async publishTaskProcessComment(taskId, changedFiles, diffSummary) {
+        const task = mainState.getTask(taskId);
+        if (!task) {
+            return;
+        }
+        try {
+            await createIssueComment(task.repoFullName, task.issueNumber, buildTaskProcessComment({
+                task,
+                changedFiles,
+                diffSummary
+            }));
+            this.appendLog(taskId, {
+                level: 'success',
+                text: '已在 Issue 中写入任务修改过程评论'
+            });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.appendLog(taskId, {
+                level: 'error',
+                text: `写入任务修改过程评论失败：${message}`
+            });
+        }
     }
     isAgentRuntimeLog(text) {
         const normalized = normalizeLogText(text);
