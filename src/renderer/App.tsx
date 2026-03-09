@@ -126,6 +126,159 @@ function statusClass(status: TaskEntity['status']): string {
   }
 }
 
+type TaskStepTone = 'done' | 'active' | 'error' | 'muted';
+type TaskStepItem = { label: string; tone: TaskStepTone };
+
+function buildTaskStepItems(task?: TaskEntity): TaskStepItem[] {
+  if (!task) {
+    return [];
+  }
+
+  const logs = task.logs.map((log) => log.text.trim()).filter(Boolean);
+  const hasLogs = logs.length > 0;
+  const reviewRounds = new Set<number>();
+  const repairRounds = new Set<number>();
+  let envStarted = hasLogs || task.status !== 'pending';
+  let codingStarted = false;
+  let submitStarted = false;
+  let humanConfirmation = false;
+
+  logs.forEach((text) => {
+    if (
+      text.startsWith('开始执行 Issue 安全检查') ||
+      text.startsWith('已载入本地录入任务') ||
+      text.startsWith('开始检测/创建 Fork 仓库') ||
+      text.startsWith('开始准备任务分支') ||
+      text.startsWith('开始准备直提分支:') ||
+      text.startsWith('已准备分支:') ||
+      text.startsWith('开始克隆任务分支到本地工作目录') ||
+      text.startsWith('本地工作目录准备完成')
+    ) {
+      envStarted = true;
+    }
+
+    if (text.includes('人工确认')) {
+      humanConfirmation = true;
+    }
+
+    if (text.includes('开始执行代码实现')) {
+      codingStarted = true;
+    }
+
+    const reviewMatch = text.match(/^开始第\s+(\d+)(?:\/\d+)?\s+轮 Review Agent 审查$/);
+    if (reviewMatch) {
+      reviewRounds.add(Number(reviewMatch[1]));
+      codingStarted = true;
+      return;
+    }
+
+    const repairMatch = text.match(/^开始第\s+(\d+)\s+次返工/);
+    if (repairMatch) {
+      repairRounds.add(Number(repairMatch[1]));
+      codingStarted = true;
+      return;
+    }
+
+    if (
+      text.includes('开始自动提交') ||
+      text.startsWith('开始提交 ') ||
+      text.startsWith('PR 创建成功:') ||
+      text.startsWith('检测到已有 PR:') ||
+      text.startsWith('分支提交成功:')
+    ) {
+      submitStarted = true;
+      codingStarted = true;
+    }
+  });
+
+  if (task.status === 'awaiting_human_confirmation') {
+    humanConfirmation = true;
+  }
+
+  if (task.status === 'completed') {
+    submitStarted = true;
+    codingStarted = true;
+  }
+
+  const realized: string[] = ['开始'];
+  const future: string[] = [];
+
+  if (!envStarted) {
+    future.push('环境准备', 'Coding', 'Review', '提交', '完成');
+  } else {
+    realized.push('环境准备');
+  }
+
+  if (!envStarted) {
+    // 还未进入执行阶段时，仅展示完整的未来流程。
+  } else if (humanConfirmation) {
+    realized.push('人工确认');
+  } else {
+    const codingRounds = codingStarted ? Math.max(1, ...Array.from(repairRounds, (round) => round + 1)) : 0;
+    const reviewCount = reviewRounds.size > 0 ? Math.max(...reviewRounds) : submitStarted ? 1 : 0;
+    const needsRoundLabels = Math.max(codingRounds, reviewCount) > 1;
+    const codingLabel = (round: number) => (needsRoundLabels ? `Coding ${round}` : 'Coding');
+    const reviewLabel = (round: number) => (needsRoundLabels ? `Review ${round}` : 'Review');
+
+    for (let round = 1; round <= Math.max(codingRounds, reviewCount); round += 1) {
+      if (round <= codingRounds) {
+        realized.push(codingLabel(round));
+      }
+      if (round <= reviewCount) {
+        realized.push(reviewLabel(round));
+      }
+    }
+
+    if (!codingStarted) {
+      future.push('Coding', 'Review', '提交', '完成');
+    } else if (reviewCount < codingRounds) {
+      future.push(reviewLabel(codingRounds), '提交', '完成');
+    } else if (!submitStarted) {
+      future.push('提交', '完成');
+    }
+  }
+
+  if (task.status === 'completed') {
+    realized.push('提交', '完成');
+  } else if (task.status === 'failed') {
+    realized.push('失败');
+  } else if (task.status === 'cancelled') {
+    realized.push('已取消');
+  } else if (task.status !== 'awaiting_human_confirmation' && submitStarted) {
+    realized.push('提交');
+    future.push('完成');
+  }
+
+  if (
+    task.status === 'awaiting_human_confirmation' ||
+    task.status === 'completed' ||
+    task.status === 'failed' ||
+    task.status === 'cancelled'
+  ) {
+    future.length = 0;
+  }
+
+  const items: TaskStepItem[] = realized.map((label, index) => {
+    const isLastRealized = index === realized.length - 1;
+
+    if (task.status === 'completed') {
+      return { label, tone: 'done' };
+    }
+
+    if (task.status === 'failed' && isLastRealized) {
+      return { label, tone: 'error' };
+    }
+
+    if (task.status === 'cancelled' && isLastRealized) {
+      return { label, tone: 'muted' };
+    }
+
+    return { label, tone: isLastRealized ? 'active' : 'done' };
+  });
+
+  return [...items, ...future.map((label) => ({ label, tone: 'muted' as const }))];
+}
+
 function taskSourceLabel(source: TaskSource): string {
   return source === 'local' ? '本地录入' : 'Issue';
 }
@@ -390,6 +543,14 @@ export default function App(): JSX.Element {
       level: log.level,
       text: log.text
     }));
+  }, [activeTask]);
+
+  const taskSteps = useMemo(() => {
+    if (!activeTask) {
+      return [];
+    }
+
+    return buildTaskStepItems(activeTask);
   }, [activeTask]);
 
   useEffect(() => {
@@ -1807,33 +1968,56 @@ export default function App(): JSX.Element {
                         </button>
                       ) : null}
 
-                      <div className="log-box" ref={logBoxRef}>
-                        {renderedLogs.length === 0 ? (
-                          <p className="log-empty">等待日志输出...</p>
-                        ) : (
-                          <>
-                            <button
-                              className="log-copy-btn icon-plain"
-                              type="button"
-                              onClick={copyAllLogs}
-                              title="复制全部日志"
-                            >
-                              {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
-                            </button>
-                            {renderedLogs.map((log) => {
-                              const label = logLevelLabel(log.level);
-                              return (
-                                <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
-                                  {label && <span className={`log-badge log-badge-${log.level}`}>{label}</span>}
-                                  <div className="log-main">
-                                    <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
-                                    <p className={`log-text log-${log.level}`}>{log.text}</p>
-                                  </div>
+                      <div className="task-log-section">
+                        {taskSteps.length > 0 ? (
+                          <section className="task-steps-panel" aria-label="执行步骤">
+                            <div className="task-steps-head">
+                              <span className="task-steps-title">执行步骤</span>
+                              <span className="task-steps-count">共 {taskSteps.length} 步</span>
+                            </div>
+                            <div className="task-steps-rail">
+                              {taskSteps.map((step, index) => (
+                                <div
+                                  key={`${index + 1}-${step.label}`}
+                                  className={`task-step task-step-${step.tone}`}
+                                  title={step.label}
+                                >
+                                  <span className="task-step-index">{index + 1}</span>
+                                  <span className="task-step-label">{step.label}</span>
                                 </div>
-                              );
-                            })}
-                          </>
-                        )}
+                              ))}
+                            </div>
+                          </section>
+                        ) : null}
+
+                        <div className="log-box" ref={logBoxRef}>
+                          {renderedLogs.length === 0 ? (
+                            <p className="log-empty">等待日志输出...</p>
+                          ) : (
+                            <>
+                              <button
+                                className="log-copy-btn icon-plain"
+                                type="button"
+                                onClick={copyAllLogs}
+                                title="复制全部日志"
+                              >
+                                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                              </button>
+                              {renderedLogs.map((log) => {
+                                const label = logLevelLabel(log.level);
+                                return (
+                                  <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>
+                                    {label && <span className={`log-badge log-badge-${log.level}`}>{label}</span>}
+                                    <div className="log-main">
+                                      <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
+                                      <p className={`log-text log-${log.level}`}>{log.text}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ) : (
