@@ -7,7 +7,7 @@ const MAX_AUTO_POLL_INTERVAL_SEC = 60 * 60;
 const MIN_REVIEW_MAX_ROUNDS = 1;
 const MAX_REVIEW_MAX_ROUNDS = 8;
 const DEFAULT_DIRECT_BRANCH_NAME = 'develop';
-const DEFAULT_AUTO_INCLUDE_LABELS = ['bug', 'enhancement'];
+const DEFAULT_AUTO_INCLUDE_LABELS = ['bug', 'enhancement', 'documentation'];
 let cachedAutoModeSettings;
 let cachedAgentSettings;
 const DEFAULT_AUTO_MODE_SETTINGS = {

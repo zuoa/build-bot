@@ -1,4 +1,4 @@
-export const DEFAULT_AUTO_ENQUEUE_LABELS = ['bug', 'enhancement'];
+export const DEFAULT_AUTO_ENQUEUE_LABELS = ['bug', 'enhancement', 'documentation'];
 export function inferTaskType(issue) {
     const labelText = issue.labels.map((item) => item.name).join(' ');
     const source = `${issue.title} ${labelText}`.toLowerCase();

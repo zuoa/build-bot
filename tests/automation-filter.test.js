@@ -22,13 +22,14 @@ function createIssue(labels, title = 'Issue title') {
   };
 }
 
-test('hasAutoEnqueueLabel only accepts bug or enhancement labels', () => {
-  assert.deepEqual(DEFAULT_AUTO_ENQUEUE_LABELS, ['bug', 'enhancement']);
+test('hasAutoEnqueueLabel accepts the default auto-enqueue labels', () => {
+  assert.deepEqual(DEFAULT_AUTO_ENQUEUE_LABELS, ['bug', 'enhancement', 'documentation']);
   assert.equal(hasAutoEnqueueLabel(createIssue(['bug'])), true);
   assert.equal(hasAutoEnqueueLabel(createIssue(['enhancement'])), true);
+  assert.equal(hasAutoEnqueueLabel(createIssue(['documentation'])), true);
   assert.equal(hasAutoEnqueueLabel(createIssue(['Bug'])), true);
   assert.equal(hasAutoEnqueueLabel(createIssue(['question'])), false);
-  assert.equal(hasAutoEnqueueLabel(createIssue(['documentation', 'help wanted'])), false);
+  assert.equal(hasAutoEnqueueLabel(createIssue(['documentation', 'help wanted'])), true);
 });
 
 test('hasAutoEnqueueLabel respects custom configured labels', () => {

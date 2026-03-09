@@ -1,6 +1,6 @@
 import type { IssueSummary, TaskType } from './types';
 
-export const DEFAULT_AUTO_ENQUEUE_LABELS = ['bug', 'enhancement'];
+export const DEFAULT_AUTO_ENQUEUE_LABELS = ['bug', 'enhancement', 'documentation'];
 
 export function inferTaskType(issue: IssueSummary): TaskType {
   const labelText = issue.labels.map((item) => item.name).join(' ');
