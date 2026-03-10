@@ -16,8 +16,6 @@ test('buildCodexExecArgs creates a new read-only session when no session id exis
   assert.deepEqual(args, [
     'exec',
     '--json',
-    '--color',
-    'never',
     '--output-last-message',
     '/tmp/codex-output.txt',
     '--sandbox',
@@ -37,8 +35,6 @@ test('buildCodexExecArgs resumes an existing writable session', () => {
     'exec',
     'resume',
     '--json',
-    '--color',
-    'never',
     '--output-last-message',
     '/tmp/codex-output.txt',
     '--full-auto',

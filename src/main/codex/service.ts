@@ -200,15 +200,7 @@ export function buildCodexExecArgs(params: {
   const sessionId = params.sessionId?.trim();
 
   if (sessionId) {
-    const args = [
-      'exec',
-      'resume',
-      '--json',
-      '--color',
-      'never',
-      '--output-last-message',
-      params.outputFile
-    ];
+    const args = ['exec', 'resume', '--json', '--output-last-message', params.outputFile];
 
     if (!params.readOnly) {
       args.push('--full-auto');
@@ -221,8 +213,6 @@ export function buildCodexExecArgs(params: {
   const args = [
     'exec',
     '--json',
-    '--color',
-    'never',
     '--output-last-message',
     params.outputFile,
     '--sandbox',
