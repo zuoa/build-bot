@@ -1230,6 +1230,12 @@ button.ghost:hover {
   gap: 8px;
 }
 
+.task-meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .task-meta-copy {
   min-width: 0;
 }

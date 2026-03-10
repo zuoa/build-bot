@@ -418,6 +418,7 @@ export default function App(): JSX.Element {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
   const [timerNow, setTimerNow] = useState<number>(Date.now());
   const [copied, setCopied] = useState(false);
+  const [retryingTaskId, setRetryingTaskId] = useState('');
   const logBoxRef = useRef<HTMLDivElement | null>(null);
   const agentSettingsSaveTimerRef = useRef<number>();
   const latestAgentSettingsSignatureRef = useRef('');
@@ -931,6 +932,39 @@ export default function App(): JSX.Element {
       setError(message);
     } finally {
       setCreatingLocalTask(false);
+    }
+  }
+
+  async function handleRetryTask(task: TaskEntity): Promise<void> {
+    if (task.status !== 'failed') {
+      return;
+    }
+
+    setRetryingTaskId(task.id);
+    setError(undefined);
+    try {
+      const retriedTask =
+        task.source === 'local'
+          ? await enqueueTask({
+              source: 'local',
+              repoFullName: task.repoFullName,
+              taskType: task.taskType,
+              title: task.issueTitle,
+              body: task.taskBody?.trim()
+            })
+          : await enqueueTask({
+              repoFullName: task.repoFullName,
+              issueNumber: task.issueNumber,
+              taskType: task.taskType
+            });
+
+      setActiveTaskId(retriedTask.id);
+      setWorkspaceView('tasks');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '任务重试失败';
+      setError(message);
+    } finally {
+      setRetryingTaskId((current) => (current === task.id ? '' : current));
     }
   }
 
@@ -1980,11 +2014,23 @@ export default function App(): JSX.Element {
                             {taskSourceLabel(activeTask.source)} · {activeTask.repoFullName}
                           </p>
                         </div>
-                        {activeTask.status === 'pending' || activeTask.status === 'running' ? (
-                          <button className="ghost" onClick={() => void cancelTask(activeTask.id)}>
-                            取消任务
-                          </button>
-                        ) : null}
+                        <div className="task-meta-actions">
+                          {activeTask.status === 'failed' ? (
+                            <button
+                              className="ghost"
+                              type="button"
+                              disabled={retryingTaskId === activeTask.id}
+                              onClick={() => void handleRetryTask(activeTask)}
+                            >
+                              {retryingTaskId === activeTask.id ? '重试中...' : '重试任务'}
+                            </button>
+                          ) : null}
+                          {activeTask.status === 'pending' || activeTask.status === 'running' ? (
+                            <button className="ghost" onClick={() => void cancelTask(activeTask.id)}>
+                              取消任务
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
 
                       {activeTask.result?.error ? (
