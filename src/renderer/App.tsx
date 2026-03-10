@@ -39,6 +39,32 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(n
 type WorkspaceView = 'tasks' | 'issues';
 type SettingsTab = 'agent' | 'auto' | 'account';
 
+function diffLineClass(line: string): string {
+  if (
+    line.startsWith('diff --git') ||
+    line.startsWith('index ') ||
+    line.startsWith('new file mode') ||
+    line.startsWith('deleted file mode') ||
+    line.startsWith('similarity index') ||
+    line.startsWith('rename from ') ||
+    line.startsWith('rename to ') ||
+    line.startsWith('--- ') ||
+    line.startsWith('+++ ')
+  ) {
+    return 'task-diff-line-meta';
+  }
+  if (line.startsWith('@@')) {
+    return 'task-diff-line-hunk';
+  }
+  if (line.startsWith('+') && !line.startsWith('+++')) {
+    return 'task-diff-line-add';
+  }
+  if (line.startsWith('-') && !line.startsWith('---')) {
+    return 'task-diff-line-del';
+  }
+  return 'task-diff-line-context';
+}
+
 function agentProviderLabel(provider: AgentProvider): string {
   return provider === 'codex' ? 'Codex' : 'Claude';
 }
@@ -499,13 +525,38 @@ export default function App(): JSX.Element {
     if (!activeTask) {
       return [];
     }
-    const merged: Array<{
-      at: number;
-      level: TaskEntity['logs'][number]['level'];
-      text: string;
-      dedupKey: string;
-    }> = [];
+    const merged: Array<
+      | {
+          at: number;
+          level: TaskEntity['logs'][number]['level'];
+          kind: 'text';
+          text: string;
+          dedupKey: string;
+        }
+      | {
+          at: number;
+          level: TaskEntity['logs'][number]['level'];
+          kind: 'diff';
+          text: string;
+          filePath?: string;
+          diff: string;
+          isDiffTruncated?: boolean;
+        }
+    > = [];
     activeTask.logs.forEach((log) => {
+      if (log.kind === 'diff' && log.diff) {
+        merged.push({
+          at: log.at,
+          level: log.level,
+          kind: 'diff',
+          text: log.text,
+          filePath: log.filePath,
+          diff: log.diff,
+          isDiffTruncated: log.isDiffTruncated
+        });
+        return;
+      }
+
       const text = normalizeVisibleLogText(log.text);
       if (!text) {
         return;
@@ -514,6 +565,7 @@ export default function App(): JSX.Element {
       const prev = merged[merged.length - 1];
       const isNearDuplicate =
         prev &&
+        prev.kind === 'text' &&
         prev.level === log.level &&
         dedupKey.length > 0 &&
         prev.dedupKey === dedupKey &&
@@ -524,6 +576,7 @@ export default function App(): JSX.Element {
       }
       const canMerge =
         prev &&
+        prev.kind === 'text' &&
         prev.level === log.level &&
         log.at - prev.at <= 1200 &&
         prev.text.length < 240 &&
@@ -536,13 +589,26 @@ export default function App(): JSX.Element {
         prev.dedupKey = buildLogDedupKey(prev.text);
         return;
       }
-      merged.push({ at: log.at, level: log.level, text, dedupKey });
+      merged.push({ at: log.at, level: log.level, kind: 'text', text, dedupKey });
     });
-    return merged.slice(-500).map((log) => ({
-      at: log.at,
-      level: log.level,
-      text: log.text
-    }));
+    return merged.slice(-500).map((log) =>
+      log.kind === 'diff'
+        ? {
+            at: log.at,
+            level: log.level,
+            kind: 'diff' as const,
+            text: log.text,
+            filePath: log.filePath,
+            diff: log.diff,
+            isDiffTruncated: log.isDiffTruncated
+          }
+        : {
+            at: log.at,
+            level: log.level,
+            kind: 'text' as const,
+            text: log.text
+          }
+    );
   }, [activeTask]);
 
   const taskSteps = useMemo(() => {
@@ -2004,6 +2070,35 @@ export default function App(): JSX.Element {
                                 {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                               </button>
                               {renderedLogs.map((log) => {
+                                if (log.kind === 'diff') {
+                                  return (
+                                    <div key={`${log.at}-${log.filePath ?? log.text}`} className="log-row log-row-diff">
+                                      <div className="log-main log-main-diff">
+                                        <span className="log-time">{new Date(log.at).toLocaleTimeString()}</span>
+                                        <section className="log-diff-card" aria-label={log.filePath ?? 'Diff 日志'}>
+                                          <div className="log-diff-head">
+                                            <span className="log-diff-kicker">DIFF</span>
+                                            <strong className="log-diff-path">{log.filePath ?? log.text}</strong>
+                                            {log.isDiffTruncated ? (
+                                              <span className="log-diff-chip">已截断</span>
+                                            ) : null}
+                                          </div>
+                                          <pre className="log-diff-code">
+                                            {log.diff.split('\n').map((line, index) => (
+                                              <span
+                                                key={`${log.at}-${log.filePath ?? 'diff'}-${index}`}
+                                                className={`task-diff-line ${diffLineClass(line)}`}
+                                              >
+                                                {line || ' '}
+                                              </span>
+                                            ))}
+                                          </pre>
+                                        </section>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
                                 const label = logLevelLabel(log.level);
                                 return (
                                   <div key={`${log.at}-${log.text}`} className={`log-row log-row-${log.level}`}>

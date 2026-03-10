@@ -1,6 +1,21 @@
 import type { TaskEntity } from '../../shared/types';
 
-export type MergedLog = { at: number; level: TaskEntity['logs'][number]['level']; text: string };
+export type MergedLog =
+  | {
+      at: number;
+      level: TaskEntity['logs'][number]['level'];
+      kind: 'text';
+      text: string;
+    }
+  | {
+      at: number;
+      level: TaskEntity['logs'][number]['level'];
+      kind: 'diff';
+      text: string;
+      filePath?: string;
+      diff: string;
+      isDiffTruncated?: boolean;
+    };
 
 export function logLevelLabel(level: TaskEntity['logs'][number]['level']): string {
   switch (level) {
@@ -25,11 +40,25 @@ export function logLevelLabel(level: TaskEntity['logs'][number]['level']): strin
 export function mergeLogs(logs: TaskEntity['logs']): MergedLog[] {
   const merged: MergedLog[] = [];
   logs.forEach((log) => {
+    if (log.kind === 'diff' && log.diff) {
+      merged.push({
+        at: log.at,
+        level: log.level,
+        kind: 'diff',
+        text: log.text.trim(),
+        filePath: log.filePath,
+        diff: log.diff,
+        isDiffTruncated: log.isDiffTruncated
+      });
+      return;
+    }
+
     const text = log.text.trim();
     if (!text) return;
     const prev = merged[merged.length - 1];
     const canMerge =
       prev &&
+      prev.kind === 'text' &&
       prev.level === log.level &&
       log.at - prev.at <= 1200 &&
       prev.text.length < 240 &&
@@ -41,7 +70,7 @@ export function mergeLogs(logs: TaskEntity['logs']): MergedLog[] {
       prev.at = log.at;
       return;
     }
-    merged.push({ at: log.at, level: log.level, text });
+    merged.push({ at: log.at, level: log.level, kind: 'text', text });
   });
   return merged;
 }
@@ -53,6 +82,11 @@ export function formatLogsForCopy(mergedLogs: MergedLog[]): string {
   return mergedLogs
     .map((log) => {
       const time = new Date(log.at).toLocaleTimeString();
+      if (log.kind === 'diff') {
+        const title = log.filePath ? `[Diff] ${log.filePath}` : '[Diff]';
+        const truncated = log.isDiffTruncated ? '\n[Diff truncated]' : '';
+        return `${time} ${title}\n${log.diff}${truncated}`;
+      }
       const level = log.level === 'info' ? '' : `[${logLevelLabel(log.level)}] `;
       return `${time} ${level}${log.text}`;
     })

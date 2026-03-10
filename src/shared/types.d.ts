@@ -74,10 +74,16 @@ export interface TaskLog {
     at: number;
     level: 'info' | 'success' | 'error' | 'thinking';
     text: string;
+    kind?: 'text' | 'diff';
+    filePath?: string;
+    diff?: string;
+    isDiffTruncated?: boolean;
 }
 export interface TaskFileChange {
     path: string;
     selected: boolean;
+    diff?: string;
+    isDiffTruncated?: boolean;
 }
 export interface TaskResult {
     submissionMode?: SubmissionMode;

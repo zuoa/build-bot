@@ -48,11 +48,24 @@ function normalizeLogs(value) {
         if (level !== 'info' && level !== 'success' && level !== 'error' && level !== 'thinking') {
             return undefined;
         }
-        return {
+        const normalized = {
             at: log.at,
             level,
             text: log.text
         };
+        if (log.kind === 'diff') {
+            normalized.kind = 'diff';
+        }
+        if (typeof log.filePath === 'string') {
+            normalized.filePath = log.filePath;
+        }
+        if (typeof log.diff === 'string') {
+            normalized.diff = log.diff;
+        }
+        if (log.isDiffTruncated === true) {
+            normalized.isDiffTruncated = true;
+        }
+        return normalized;
     })
         .filter((entry) => Boolean(entry))
         .slice(-TASK_LOG_LIMIT);
@@ -70,10 +83,17 @@ function normalizeChangedFiles(value) {
         if (typeof file.path !== 'string' || !file.path.trim()) {
             return undefined;
         }
-        return {
+        const normalized = {
             path: file.path,
             selected: file.selected !== false
         };
+        if (typeof file.diff === 'string') {
+            normalized.diff = file.diff;
+        }
+        if (file.isDiffTruncated === true) {
+            normalized.isDiffTruncated = true;
+        }
+        return normalized;
     })
         .filter((entry) => Boolean(entry));
 }

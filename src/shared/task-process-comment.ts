@@ -20,6 +20,10 @@ function isRuntimeNoise(text: string): boolean {
 }
 
 function normalizeStepText(log: TaskLog): string | undefined {
+  if (log.kind === 'diff') {
+    return undefined;
+  }
+
   if (log.level === 'thinking') {
     return undefined;
   }

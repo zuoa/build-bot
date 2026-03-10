@@ -1,4 +1,4 @@
-import type { TaskSource, TaskType } from '../../shared/types';
+import type { TaskFileChange, TaskSource, TaskType } from '../../shared/types';
 import type { ForkContext, RepoBranchContext } from '../github/service';
 export declare function cloneBranchWorkspace(params: {
     context: ForkContext | RepoBranchContext;
@@ -9,6 +9,7 @@ export declare function cloneBranchWorkspace(params: {
     onProgress?: (message: string) => void;
 }): Promise<string>;
 export declare function listChangedFiles(workspacePath: string): Promise<string[]>;
+export declare function buildTaskFileChanges(workspacePath: string, files: string[]): Promise<TaskFileChange[]>;
 export declare function getFileDiffSummary(workspacePath: string, files: string[]): Promise<string>;
 export declare function commitAndPush(params: {
     workspacePath: string;

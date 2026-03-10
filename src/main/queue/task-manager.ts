@@ -8,14 +8,20 @@ import type {
   SubmissionMode,
   TaskAgentSession,
   TaskEntity,
-  TaskFileChange,
   TaskLog,
   TaskSource
 } from '../../shared/types';
 import { buildLogDedupKey, normalizeVisibleLogText } from '../../shared/log-dedupe';
 import { buildTaskProcessComment } from '../../shared/task-process-comment';
 import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
-import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
+import {
+  buildTaskFileChanges,
+  cleanupWorkspace,
+  cloneBranchWorkspace,
+  commitAndPush,
+  listChangedFiles,
+  getFileDiffSummary
+} from '../git/service';
 import {
   addLabelToIssue,
   buildBranchUrl,
@@ -82,7 +88,15 @@ function normalizeLogText(text: string): string {
   return normalizeVisibleLogText(text);
 }
 
+function isDiffLog(log: Pick<TaskLog, 'kind'>): boolean {
+  return log.kind === 'diff';
+}
+
 function shouldSkipDuplicateLog(taskLogs: TaskLog[], next: Omit<TaskLog, 'at'>, now: number): boolean {
+  if (isDiffLog(next)) {
+    return false;
+  }
+
   const nextKey = buildLogDedupKey(next.text);
   if (!nextKey) {
     return false;
@@ -105,6 +119,10 @@ function shouldSkipDuplicateLog(taskLogs: TaskLog[], next: Omit<TaskLog, 'at'>, 
 }
 
 function shouldReplaceStreamingLog(previous: TaskLog, next: Omit<TaskLog, 'at'>, now: number): boolean {
+  if (isDiffLog(previous) || isDiffLog(next)) {
+    return false;
+  }
+
   if (now - previous.at > LOG_STREAM_UPDATE_WINDOW_MS) {
     return false;
   }
@@ -285,6 +303,39 @@ export class TaskManager {
         text: `写入任务修改过程评论失败：${message}`
       });
     }
+  }
+
+  private async syncTaskChangedFiles(taskId: string, workspacePath: string, changedFiles: string[]): Promise<void> {
+    const previousFiles = new Map(
+      (mainState.getTask(taskId)?.changedFiles ?? []).map((file) => [file.path, file])
+    );
+    const files = await buildTaskFileChanges(workspacePath, changedFiles);
+    mainState.patchTask(taskId, { changedFiles: files });
+    this.emitTask(taskId);
+
+    files.forEach((file) => {
+      if (!file.diff) {
+        return;
+      }
+
+      const previous = previousFiles.get(file.path);
+      const changed =
+        !previous ||
+        previous.diff !== file.diff ||
+        previous.isDiffTruncated !== file.isDiffTruncated;
+      if (!changed) {
+        return;
+      }
+
+      this.appendLog(taskId, {
+        level: 'info',
+        kind: 'diff',
+        text: `文件 Diff: ${file.path}`,
+        filePath: file.path,
+        diff: file.diff,
+        isDiffTruncated: file.isDiffTruncated
+      });
+    });
   }
 
   private isAgentRuntimeLog(text: string): boolean {
@@ -502,10 +553,7 @@ export class TaskManager {
         throw new Error('返工后工作区没有可提交变更，无法继续创建 PR');
       }
 
-      mainState.patchTask(params.taskId, {
-        changedFiles: changedFiles.map((file) => ({ path: file, selected: true }))
-      });
-      this.emitTask(params.taskId);
+      await this.syncTaskChangedFiles(params.taskId, params.workspacePath, changedFiles);
     }
 
     throw new Error('Review Agent 审查流程异常结束');
@@ -777,15 +825,7 @@ export class TaskManager {
         return;
       }
 
-      const files: TaskFileChange[] = changedFiles.map((file) => ({
-        path: file,
-        selected: true
-      }));
-
-      mainState.patchTask(taskId, {
-        changedFiles: files
-      });
-      this.emitTask(taskId);
+      await this.syncTaskChangedFiles(taskId, workspacePath, changedFiles);
 
       const approvedFiles = await this.runReviewLoop({
         taskId,

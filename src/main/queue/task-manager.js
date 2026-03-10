@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { buildLogDedupKey, normalizeVisibleLogText } from '../../shared/log-dedupe';
 import { buildTaskProcessComment } from '../../shared/task-process-comment';
 import { agentProviderLabel, checkAgentReady, runAgentTask } from '../agent/service';
-import { cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
+import { buildTaskFileChanges, cleanupWorkspace, cloneBranchWorkspace, commitAndPush, listChangedFiles, getFileDiffSummary } from '../git/service';
 import { addLabelToIssue, buildBranchUrl, createIssueComment, createBranchForTask, createPullRequest, ensureDirectBranch, ensureFork, fetchReadmeHead, getIssueDetail, splitRepoFullName } from '../github/service';
 import { assessIssueRisk, buildHumanConfirmationComment, HUMAN_CONFIRMATION_LABEL } from '../security/issue-guard';
 import { getAgentSettings } from '../settings/service';
@@ -12,7 +12,13 @@ const LOG_STREAM_UPDATE_WINDOW_MS = 15_000;
 function normalizeLogText(text) {
     return normalizeVisibleLogText(text);
 }
+function isDiffLog(log) {
+    return log.kind === 'diff';
+}
 function shouldSkipDuplicateLog(taskLogs, next, now) {
+    if (isDiffLog(next)) {
+        return false;
+    }
     const nextKey = buildLogDedupKey(next.text);
     if (!nextKey) {
         return false;
@@ -32,6 +38,9 @@ function shouldSkipDuplicateLog(taskLogs, next, now) {
     return false;
 }
 function shouldReplaceStreamingLog(previous, next, now) {
+    if (isDiffLog(previous) || isDiffLog(next)) {
+        return false;
+    }
     if (now - previous.at > LOG_STREAM_UPDATE_WINDOW_MS) {
         return false;
     }
@@ -184,6 +193,32 @@ export class TaskManager {
             });
         }
     }
+    async syncTaskChangedFiles(taskId, workspacePath, changedFiles) {
+        const previousFiles = new Map((mainState.getTask(taskId)?.changedFiles ?? []).map((file) => [file.path, file]));
+        const files = await buildTaskFileChanges(workspacePath, changedFiles);
+        mainState.patchTask(taskId, { changedFiles: files });
+        this.emitTask(taskId);
+        files.forEach((file) => {
+            if (!file.diff) {
+                return;
+            }
+            const previous = previousFiles.get(file.path);
+            const changed = !previous ||
+                previous.diff !== file.diff ||
+                previous.isDiffTruncated !== file.isDiffTruncated;
+            if (!changed) {
+                return;
+            }
+            this.appendLog(taskId, {
+                level: 'info',
+                kind: 'diff',
+                text: `文件 Diff: ${file.path}`,
+                filePath: file.path,
+                diff: file.diff,
+                isDiffTruncated: file.isDiffTruncated
+            });
+        });
+    }
     isAgentRuntimeLog(text) {
         const normalized = normalizeLogText(text);
         return (normalized.startsWith('Claude Code 进程已启动') ||
@@ -333,10 +368,7 @@ export class TaskManager {
             if (changedFiles.length === 0) {
                 throw new Error('返工后工作区没有可提交变更，无法继续创建 PR');
             }
-            mainState.patchTask(params.taskId, {
-                changedFiles: changedFiles.map((file) => ({ path: file, selected: true }))
-            });
-            this.emitTask(params.taskId);
+            await this.syncTaskChangedFiles(params.taskId, params.workspacePath, changedFiles);
         }
         throw new Error('Review Agent 审查流程异常结束');
     }
@@ -569,14 +601,7 @@ export class TaskManager {
                 this.onTaskUpdate(failed);
                 return;
             }
-            const files = changedFiles.map((file) => ({
-                path: file,
-                selected: true
-            }));
-            mainState.patchTask(taskId, {
-                changedFiles: files
-            });
-            this.emitTask(taskId);
+            await this.syncTaskChangedFiles(taskId, workspacePath, changedFiles);
             const approvedFiles = await this.runReviewLoop({
                 taskId,
                 workspacePath,

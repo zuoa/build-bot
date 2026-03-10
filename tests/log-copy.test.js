@@ -9,6 +9,10 @@ function createLog(at, level, text) {
   return { at, level, text };
 }
 
+function createDiffLog(at, filePath, diff) {
+  return { at, level: 'info', kind: 'diff', text: `文件 Diff: ${filePath}`, filePath, diff };
+}
+
 test('mergeLogs returns empty array for empty input', () => {
   assert.deepEqual(mergeLogs([]), []);
 });
@@ -86,6 +90,21 @@ test('mergeLogs handles multiline logs without merging', () => {
   assert.equal(merged.length, 2);
 });
 
+test('mergeLogs keeps diff logs as standalone entries', () => {
+  const baseTime = Date.now();
+  const logs = [
+    createLog(baseTime, 'info', 'Start'),
+    createDiffLog(baseTime + 100, 'src/app.ts', '@@ -1 +1 @@\n-old\n+new'),
+    createLog(baseTime + 200, 'info', 'Done')
+  ];
+
+  const merged = mergeLogs(logs);
+
+  assert.equal(merged.length, 3);
+  assert.equal(merged[1].kind, 'diff');
+  assert.equal(merged[1].filePath, 'src/app.ts');
+});
+
 test('formatLogsForCopy formats logs with timestamps', () => {
   const baseTime = new Date('2024-01-15T10:30:00').getTime();
   const merged = [
@@ -148,4 +167,21 @@ test('copy function output includes all logs (not truncated to 500)', () => {
   // 验证第一条和最后一条都存在
   assert.ok(copyText.includes('Entry 0'));
   assert.ok(copyText.includes('Entry 599'));
+});
+
+test('formatLogsForCopy includes diff payloads', () => {
+  const baseTime = Date.now();
+  const result = formatLogsForCopy([
+    {
+      at: baseTime,
+      level: 'info',
+      kind: 'diff',
+      text: '文件 Diff: src/app.ts',
+      filePath: 'src/app.ts',
+      diff: '@@ -1 +1 @@\n-old\n+new'
+    }
+  ]);
+
+  assert.ok(result.includes('[Diff] src/app.ts'));
+  assert.ok(result.includes('+new'));
 });

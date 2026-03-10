@@ -15,6 +15,9 @@ function isRuntimeNoise(text) {
     return RUNTIME_NOISE_PATTERNS.some((pattern) => pattern.test(text));
 }
 function normalizeStepText(log) {
+    if (log.kind === 'diff') {
+        return undefined;
+    }
     if (log.level === 'thinking') {
         return undefined;
     }

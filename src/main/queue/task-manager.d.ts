@@ -9,6 +9,7 @@ export declare class TaskManager {
     enqueue(input: EnqueueTaskInput, issueTitle: string): TaskEntity;
     private commitTaskChanges;
     private publishTaskProcessComment;
+    private syncTaskChangedFiles;
     private isAgentRuntimeLog;
     private getAgentSession;
     private updateAgentSession;

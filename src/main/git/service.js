@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, rm, statfs } from 'node:fs/promises';
+import { mkdir, readFile, rm, statfs } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { simpleGit } from 'simple-git';
@@ -8,6 +8,11 @@ const MIN_REQUIRED_BYTES = 200 * 1024 * 1024;
 const WORKSPACE_RM_RETRIES = 8;
 const WORKSPACE_RM_RETRY_DELAY_MS = 250;
 const CLONE_TIMEOUT_MS = Number(process.env.GIT_CLONE_TIMEOUT_MS ?? 10 * 60 * 1000);
+const MAX_DIFF_LINES = 320;
+const MAX_DIFF_CHARS = 18_000;
+function normalizeDiffPath(file) {
+    return file.replace(/\\/g, '/');
+}
 function stripAnsi(text) {
     return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
 }
@@ -189,6 +194,113 @@ export async function listChangedFiles(workspacePath) {
         ...status.renamed.map((item) => item.to)
     ]);
     return Array.from(files).sort((a, b) => a.localeCompare(b));
+}
+function truncateDiffText(diff) {
+    const normalized = diff.trimEnd();
+    if (!normalized) {
+        return { diff: '', isDiffTruncated: false };
+    }
+    const lines = normalized.split('\n');
+    const shouldTruncate = lines.length > MAX_DIFF_LINES || normalized.length > MAX_DIFF_CHARS;
+    if (!shouldTruncate) {
+        return { diff: normalized, isDiffTruncated: false };
+    }
+    const limitedLines = [];
+    let currentChars = 0;
+    for (const line of lines) {
+        if (limitedLines.length >= MAX_DIFF_LINES) {
+            break;
+        }
+        const nextSize = currentChars + line.length + 1;
+        if (nextSize > MAX_DIFF_CHARS) {
+            break;
+        }
+        limitedLines.push(line);
+        currentChars = nextSize;
+    }
+    limitedLines.push('... [diff truncated]');
+    return {
+        diff: limitedLines.join('\n'),
+        isDiffTruncated: true
+    };
+}
+function buildTextFileCreationDiff(file, content) {
+    const normalizedPath = normalizeDiffPath(file);
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+    const body = normalizedContent.endsWith('\n') ? normalizedContent.slice(0, -1) : normalizedContent;
+    const lines = body ? body.split('\n') : [];
+    const header = [
+        `diff --git a/${normalizedPath} b/${normalizedPath}`,
+        'new file mode 100644',
+        '--- /dev/null',
+        `+++ b/${normalizedPath}`
+    ];
+    if (lines.length === 0) {
+        return header.join('\n');
+    }
+    return [...header, `@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`)].join('\n');
+}
+async function buildUntrackedFileDiff(workspacePath, file) {
+    const absolutePath = path.join(workspacePath, file);
+    const content = await readFile(absolutePath);
+    if (content.includes(0)) {
+        const normalizedPath = normalizeDiffPath(file);
+        return [
+            `diff --git a/${normalizedPath} b/${normalizedPath}`,
+            'new file mode 100644',
+            'Binary file not shown'
+        ].join('\n');
+    }
+    return buildTextFileCreationDiff(file, content.toString('utf8'));
+}
+async function getTrackedFileDiff(workspacePath, file) {
+    const git = simpleGit(workspacePath);
+    return git.raw([
+        'diff',
+        '--no-color',
+        '--no-ext-diff',
+        '--unified=3',
+        '--find-renames',
+        'HEAD',
+        '--',
+        file
+    ]);
+}
+export async function buildTaskFileChanges(workspacePath, files) {
+    const status = await simpleGit(workspacePath).status();
+    const createdFiles = new Set([...status.not_added, ...status.created]);
+    const renamedFiles = new Map(status.renamed.map((item) => [item.to, item.from]));
+    const changes = await Promise.all(files.map(async (file) => {
+        let rawDiff = '';
+        try {
+            if (createdFiles.has(file)) {
+                rawDiff = await buildUntrackedFileDiff(workspacePath, file);
+            }
+            else {
+                rawDiff = await getTrackedFileDiff(workspacePath, file);
+            }
+        }
+        catch {
+            rawDiff = '';
+        }
+        if (!rawDiff.trim() && renamedFiles.has(file)) {
+            const from = normalizeDiffPath(renamedFiles.get(file) ?? file);
+            const to = normalizeDiffPath(file);
+            rawDiff = [`diff --git a/${from} b/${to}`, `rename from ${from}`, `rename to ${to}`].join('\n');
+        }
+        if (!rawDiff.trim()) {
+            const normalizedPath = normalizeDiffPath(file);
+            rawDiff = [`diff --git a/${normalizedPath} b/${normalizedPath}`, 'No textual diff available'].join('\n');
+        }
+        const { diff, isDiffTruncated } = truncateDiffText(rawDiff);
+        return {
+            path: file,
+            selected: true,
+            diff,
+            isDiffTruncated
+        };
+    }));
+    return changes.sort((left, right) => left.path.localeCompare(right.path));
 }
 export async function getFileDiffSummary(workspacePath, files) {
     if (files.length === 0) {
