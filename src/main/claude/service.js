@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const BUGFIX_TIMEOUT_MS = 30 * 60 * 1000;
@@ -274,13 +275,22 @@ function parseStreamEvent(line) {
         }
     };
 }
-function buildClaudeArgs(params) {
+function shortenSessionId(sessionId) {
+    return sessionId.slice(0, 8);
+}
+export function buildClaudeArgs(params) {
     const args = ['--dangerously-skip-permissions', '-p'];
+    if (params.resumeSession) {
+        args.push('--resume', params.sessionId);
+    }
+    else {
+        args.push('--session-id', params.sessionId);
+    }
     if (params.useStreamJson) {
         args.push('--verbose', '--output-format', 'stream-json');
     }
     if (params.leanStartup) {
-        args.push('--disable-slash-commands', '--strict-mcp-config', '--no-session-persistence', '--setting-sources', 'local');
+        args.push('--disable-slash-commands', '--strict-mcp-config', '--setting-sources', 'local');
     }
     args.push(params.prompt);
     return args;
@@ -304,7 +314,9 @@ async function runClaudeTaskOnce(params, options) {
     const claudeArgs = buildClaudeArgs({
         prompt: params.prompt,
         useStreamJson: options.useStreamJson,
-        leanStartup: options.leanStartup
+        leanStartup: options.leanStartup,
+        sessionId: options.sessionId,
+        resumeSession: options.resumeSession
     });
     const spawnPlan = buildSpawnPlan(claudeArgs, options.usePty);
     await new Promise((resolve, reject) => {
@@ -327,9 +339,9 @@ async function runClaudeTaskOnce(params, options) {
             level: 'thinking',
             text: options.useStreamJson
                 ? options.leanStartup
-                    ? `Claude Code 进程已启动（精简模式${spawnPlan.viaPty ? '，PTY' : ''}），等待实时事件...`
-                    : `Claude Code 进程已启动（${spawnPlan.viaPty ? 'PTY' : '无 PTY'}），等待实时事件...`
-                : `Claude Code 进程已启动（${spawnPlan.viaPty ? 'PTY' : '无 PTY'}），等待输出...`
+                    ? `Claude Code 进程已启动（${options.resumeSession ? `恢复会话 ${shortenSessionId(options.sessionId)}` : `新会话 ${shortenSessionId(options.sessionId)}`}，精简模式${spawnPlan.viaPty ? '，PTY' : ''}），等待实时事件...`
+                    : `Claude Code 进程已启动（${options.resumeSession ? `恢复会话 ${shortenSessionId(options.sessionId)}` : `新会话 ${shortenSessionId(options.sessionId)}`}，${spawnPlan.viaPty ? 'PTY' : '无 PTY'}），等待实时事件...`
+                : `Claude Code 进程已启动（${options.resumeSession ? `恢复会话 ${shortenSessionId(options.sessionId)}` : `新会话 ${shortenSessionId(options.sessionId)}`}，${spawnPlan.viaPty ? 'PTY' : '无 PTY'}），等待输出...`
         });
         const touchOutput = () => {
             hasAnyOutput = true;
@@ -476,9 +488,17 @@ export async function runClaudeTask(params) {
     const forcePty = process.env.BUILDBOT_CLAUDE_FORCE_PTY === '1';
     const disablePty = process.env.BUILDBOT_CLAUDE_DISABLE_PTY === '1';
     const defaultUsePty = forcePty || !disablePty;
+    const sessionId = params.sessionId?.trim() || randomUUID();
+    const resumeSession = Boolean(params.sessionId?.trim());
     const runWithPtyFallback = async (leanStartup) => {
         try {
-            await runClaudeTaskOnce(params, { useStreamJson, leanStartup, usePty: defaultUsePty });
+            await runClaudeTaskOnce(params, {
+                useStreamJson,
+                leanStartup,
+                usePty: defaultUsePty,
+                sessionId,
+                resumeSession
+            });
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -492,7 +512,9 @@ export async function runClaudeTask(params) {
             await runClaudeTaskOnce(params, {
                 useStreamJson,
                 leanStartup,
-                usePty: false
+                usePty: false,
+                sessionId,
+                resumeSession
             });
         }
     };
@@ -516,7 +538,7 @@ export async function runClaudeTask(params) {
         });
         try {
             await runWithPtyFallback(true);
-            return;
+            return { output: '', sessionId };
         }
         catch (retryError) {
             const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
@@ -528,4 +550,5 @@ export async function runClaudeTask(params) {
             throw retryError;
         }
     }
+    return { output: '', sessionId };
 }

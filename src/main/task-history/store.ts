@@ -2,7 +2,15 @@ import { app } from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { TaskEntity, TaskFileChange, TaskLog, TaskSource, TaskStatus } from '../../shared/types';
+import type {
+  TaskAgentSession,
+  TaskAgentSessions,
+  TaskEntity,
+  TaskFileChange,
+  TaskLog,
+  TaskSource,
+  TaskStatus
+} from '../../shared/types';
 
 const TASK_HISTORY_FILE = 'task-history.json';
 const TASK_HISTORY_LIMIT = 200;
@@ -106,6 +114,48 @@ function normalizeTaskSource(value: unknown): TaskSource {
   return value === 'local' ? 'local' : 'issue';
 }
 
+function normalizeAgentSession(value: unknown): TaskAgentSession | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const session = value as Partial<TaskAgentSession>;
+  if (
+    (session.provider !== 'claude' && session.provider !== 'codex') ||
+    typeof session.sessionId !== 'string' ||
+    !session.sessionId.trim() ||
+    typeof session.updatedAt !== 'number' ||
+    !Number.isFinite(session.updatedAt)
+  ) {
+    return undefined;
+  }
+
+  return {
+    provider: session.provider,
+    sessionId: session.sessionId,
+    updatedAt: session.updatedAt
+  };
+}
+
+function normalizeAgentSessions(value: unknown): TaskAgentSessions | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const sessions = value as Partial<TaskAgentSessions>;
+  const implementation = normalizeAgentSession(sessions.implementation);
+  const review = normalizeAgentSession(sessions.review);
+
+  if (!implementation && !review) {
+    return undefined;
+  }
+
+  return {
+    implementation,
+    review
+  };
+}
+
 function normalizeTask(value: unknown): TaskEntity | undefined {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -139,6 +189,7 @@ function normalizeTask(value: unknown): TaskEntity | undefined {
     changedFiles: normalizeChangedFiles(task.changedFiles),
     branchName: typeof task.branchName === 'string' ? task.branchName : undefined,
     workspacePath: typeof task.workspacePath === 'string' ? task.workspacePath : undefined,
+    agentSessions: normalizeAgentSessions(task.agentSessions),
     result:
       task.result && typeof task.result === 'object'
         ? {

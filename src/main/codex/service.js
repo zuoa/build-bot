@@ -59,49 +59,130 @@ function pickStatusMessage(raw) {
     }
     return raw || '状态未知';
 }
+function isRecord(value) {
+    return typeof value === 'object' && value !== null;
+}
+function pickSessionId(value) {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+export function extractCodexSessionIdFromEvent(event) {
+    const direct = pickSessionId(event.session_id) ??
+        pickSessionId(event.sessionId) ??
+        pickSessionId(event.thread_id) ??
+        pickSessionId(event.threadId);
+    if (direct) {
+        return direct;
+    }
+    if (isRecord(event.thread)) {
+        return (pickSessionId(event.thread.session_id) ??
+            pickSessionId(event.thread.sessionId) ??
+            pickSessionId(event.thread.id) ??
+            pickSessionId(event.thread.name));
+    }
+    if (typeof event.type === 'string' && event.type === 'thread.started') {
+        return pickSessionId(event.id);
+    }
+    return undefined;
+}
 function parseJsonLine(line) {
     try {
         const parsed = JSON.parse(line);
         const type = typeof parsed.type === 'string' ? parsed.type : '';
+        const sessionId = extractCodexSessionIdFromEvent(parsed);
         if (type === 'thread.started') {
-            return { level: 'thinking', text: 'Codex 会话已创建，等待任务开始...' };
+            return {
+                sessionId,
+                log: { level: 'thinking', text: 'Codex 会话已创建，等待任务开始...' }
+            };
         }
         if (type === 'error' && typeof parsed.message === 'string') {
-            return { level: 'error', text: parsed.message };
+            return { sessionId, log: { level: 'error', text: parsed.message } };
         }
         if (type === 'item.started') {
             const item = parsed.item;
             const itemType = typeof item?.type === 'string' ? item.type : 'unknown';
-            return { level: 'thinking', text: `Codex 开始处理步骤：${itemType}` };
+            return {
+                sessionId,
+                log: { level: 'thinking', text: `Codex 开始处理步骤：${itemType}` }
+            };
         }
         if (type === 'item.completed' && parsed.item && typeof parsed.item === 'object') {
             const item = parsed.item;
             if (typeof item.message === 'string') {
-                return { level: item.type === 'error' ? 'error' : 'info', text: item.message };
+                return {
+                    sessionId,
+                    log: {
+                        level: item.type === 'error' ? 'error' : 'info',
+                        text: item.message
+                    }
+                };
             }
             if (typeof item.type === 'string') {
-                return { level: item.type === 'error' ? 'error' : 'thinking', text: `Codex 完成步骤：${item.type}` };
+                return {
+                    sessionId,
+                    log: {
+                        level: item.type === 'error' ? 'error' : 'thinking',
+                        text: `Codex 完成步骤：${item.type}`
+                    }
+                };
             }
         }
         if (type === 'agent_message_delta' && typeof parsed.delta === 'string') {
-            return { level: 'info', text: parsed.delta };
+            return { sessionId, log: { level: 'info', text: parsed.delta } };
         }
         if (type === 'agent_message' && typeof parsed.message === 'string') {
-            return { level: 'info', text: parsed.message };
+            return { sessionId, log: { level: 'info', text: parsed.message } };
         }
         if (type === 'turn.started') {
-            return { level: 'thinking', text: 'Codex 开始处理当前请求' };
+            return { sessionId, log: { level: 'thinking', text: 'Codex 开始处理当前请求' } };
         }
         if (type === 'turn.completed') {
-            return { level: 'success', text: 'Codex 当前回合已完成' };
+            return { sessionId, log: { level: 'success', text: 'Codex 当前回合已完成' } };
         }
         if (type) {
-            return { level: 'thinking', text: `Codex 事件：${type}` };
+            return { sessionId, log: { level: 'thinking', text: `Codex 事件：${type}` } };
         }
     }
     catch {
-        return { level: 'info', text: line };
+        return { log: { level: 'info', text: line } };
     }
+}
+function shortenSessionId(sessionId) {
+    return sessionId ? sessionId.slice(0, 8) : undefined;
+}
+export function buildCodexExecArgs(params) {
+    const sessionId = params.sessionId?.trim();
+    if (sessionId) {
+        const args = [
+            'exec',
+            'resume',
+            '--json',
+            '--color',
+            'never',
+            '--output-last-message',
+            params.outputFile
+        ];
+        if (!params.readOnly) {
+            args.push('--full-auto');
+        }
+        args.push(sessionId, params.prompt);
+        return args;
+    }
+    const args = [
+        'exec',
+        '--json',
+        '--color',
+        'never',
+        '--output-last-message',
+        params.outputFile,
+        '--sandbox',
+        params.readOnly ? 'read-only' : 'workspace-write'
+    ];
+    if (!params.readOnly) {
+        args.push('--full-auto');
+    }
+    args.push(params.prompt);
+    return args;
 }
 async function ensureOutputDir() {
     const dir = path.join(os.tmpdir(), 'buildbot-codex-output');
@@ -157,20 +238,13 @@ export async function runCodexTask(params) {
     const timeout = params.taskType === 'feature' ? FEATURE_TIMEOUT_MS : BUGFIX_TIMEOUT_MS;
     const outputDir = await ensureOutputDir();
     const outputFile = path.join(outputDir, `${randomUUID()}.txt`);
-    const args = [
-        'exec',
-        '--json',
-        '--color',
-        'never',
-        '--output-last-message',
+    const args = buildCodexExecArgs({
         outputFile,
-        '--sandbox',
-        params.readOnly ? 'read-only' : 'workspace-write'
-    ];
-    if (!params.readOnly) {
-        args.push('--full-auto');
-    }
-    args.push(params.prompt);
+        prompt: params.prompt,
+        readOnly: params.readOnly,
+        sessionId: params.sessionId
+    });
+    let activeSessionId = params.sessionId?.trim() || undefined;
     await new Promise((resolve, reject) => {
         const child = spawn('codex', args, {
             cwd: params.cwd,
@@ -186,7 +260,7 @@ export async function runCodexTask(params) {
         let lastOutputAt = Date.now();
         params.onLog({
             level: 'thinking',
-            text: `Codex 进程已启动（${params.readOnly ? '只读审查' : '可写执行'}），等待输出...`
+            text: `Codex 进程已启动（${params.sessionId ? `恢复会话 ${shortenSessionId(params.sessionId)}` : '新会话'}，${params.readOnly ? '只读审查' : '可写执行'}），等待输出...`
         });
         const clearAllTimers = () => {
             clearTimeout(timeoutTimer);
@@ -246,8 +320,11 @@ export async function runCodexTask(params) {
         const stdoutDecoder = createLineDecoder((line) => {
             touchOutput();
             const parsed = parseJsonLine(line);
-            if (parsed) {
-                params.onLog(parsed);
+            if (parsed?.sessionId) {
+                activeSessionId = parsed.sessionId;
+            }
+            if (parsed?.log) {
+                params.onLog(parsed.log);
             }
         });
         const stderrDecoder = createLineDecoder((line) => {
@@ -271,7 +348,10 @@ export async function runCodexTask(params) {
     });
     try {
         await access(outputFile);
-        return (await readFile(outputFile, 'utf8')).trim();
+        return {
+            output: (await readFile(outputFile, 'utf8')).trim(),
+            sessionId: activeSessionId
+        };
     }
     finally {
         await rm(outputFile, { force: true });

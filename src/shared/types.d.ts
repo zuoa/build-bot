@@ -1,5 +1,6 @@
 export type TaskType = 'bugfix' | 'feature';
 export type AgentProvider = 'claude' | 'codex';
+export type AgentSessionRole = 'implementation' | 'review';
 export type ReviewStrictness = 'strict' | 'normal' | 'lenient';
 export type SubmissionMode = 'branch' | 'pr';
 export type TaskSource = 'issue' | 'local';
@@ -86,6 +87,15 @@ export interface TaskResult {
     commitSha?: string;
     error?: string;
 }
+export interface TaskAgentSession {
+    provider: AgentProvider;
+    sessionId: string;
+    updatedAt: number;
+}
+export interface TaskAgentSessions {
+    implementation?: TaskAgentSession;
+    review?: TaskAgentSession;
+}
 export interface TaskEntity {
     id: string;
     source: TaskSource;
@@ -101,6 +111,7 @@ export interface TaskEntity {
     changedFiles: TaskFileChange[];
     branchName?: string;
     workspacePath?: string;
+    agentSessions?: TaskAgentSessions;
     result?: TaskResult;
 }
 export interface IssueTaskInput {

@@ -80,6 +80,39 @@ function normalizeChangedFiles(value) {
 function normalizeTaskSource(value) {
     return value === 'local' ? 'local' : 'issue';
 }
+function normalizeAgentSession(value) {
+    if (!value || typeof value !== 'object') {
+        return undefined;
+    }
+    const session = value;
+    if ((session.provider !== 'claude' && session.provider !== 'codex') ||
+        typeof session.sessionId !== 'string' ||
+        !session.sessionId.trim() ||
+        typeof session.updatedAt !== 'number' ||
+        !Number.isFinite(session.updatedAt)) {
+        return undefined;
+    }
+    return {
+        provider: session.provider,
+        sessionId: session.sessionId,
+        updatedAt: session.updatedAt
+    };
+}
+function normalizeAgentSessions(value) {
+    if (!value || typeof value !== 'object') {
+        return undefined;
+    }
+    const sessions = value;
+    const implementation = normalizeAgentSession(sessions.implementation);
+    const review = normalizeAgentSession(sessions.review);
+    if (!implementation && !review) {
+        return undefined;
+    }
+    return {
+        implementation,
+        review
+    };
+}
 function normalizeTask(value) {
     if (!value || typeof value !== 'object') {
         return undefined;
@@ -109,6 +142,7 @@ function normalizeTask(value) {
         changedFiles: normalizeChangedFiles(task.changedFiles),
         branchName: typeof task.branchName === 'string' ? task.branchName : undefined,
         workspacePath: typeof task.workspacePath === 'string' ? task.workspacePath : undefined,
+        agentSessions: normalizeAgentSessions(task.agentSessions),
         result: task.result && typeof task.result === 'object'
             ? {
                 submissionMode: task.result.submissionMode === 'pr' ? 'pr' : task.result.submissionMode === 'branch' ? 'branch' : undefined,

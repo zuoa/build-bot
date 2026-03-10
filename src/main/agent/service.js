@@ -20,17 +20,18 @@ export async function runAgentTask(params) {
             taskType: params.taskType,
             onLog: params.onLog,
             signal: params.signal,
-            readOnly: params.readOnly
+            readOnly: params.readOnly,
+            sessionId: params.sessionId
         });
     }
-    await runClaudeTask({
+    return runClaudeTask({
         cwd: params.cwd,
         prompt: params.prompt,
         taskType: params.taskType,
         signal: params.signal,
-        onLog: params.onLog
+        onLog: params.onLog,
+        sessionId: params.sessionId
     });
-    return '';
 }
 export function agentProviderLabel(provider) {
     return provider === 'codex' ? 'Codex' : 'Claude';

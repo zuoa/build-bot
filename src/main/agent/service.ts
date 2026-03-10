@@ -10,6 +10,11 @@ import { checkCodexReady, getCodexStatus, runCodexTask } from '../codex/service'
 
 export type AgentLog = ClaudeLog | CodexLog;
 
+export interface AgentTaskResult {
+  output: string;
+  sessionId?: string;
+}
+
 export async function listAgentProviderStatuses(): Promise<AgentProviderStatus[]> {
   const codexStatus = await getCodexStatus();
   const claudeStatus = await getClaudeStatus();
@@ -33,7 +38,8 @@ export async function runAgentTask(params: {
   onLog: (log: AgentLog) => void;
   signal?: AbortSignal;
   readOnly?: boolean;
-}): Promise<string> {
+  sessionId?: string;
+}): Promise<AgentTaskResult> {
   if (params.provider === 'codex') {
     return runCodexTask({
       cwd: params.cwd,
@@ -41,19 +47,19 @@ export async function runAgentTask(params: {
       taskType: params.taskType,
       onLog: params.onLog,
       signal: params.signal,
-      readOnly: params.readOnly
+      readOnly: params.readOnly,
+      sessionId: params.sessionId
     });
   }
 
-  await runClaudeTask({
+  return runClaudeTask({
     cwd: params.cwd,
     prompt: params.prompt,
     taskType: params.taskType,
     signal: params.signal,
-    onLog: params.onLog
+    onLog: params.onLog,
+    sessionId: params.sessionId
   });
-
-  return '';
 }
 
 export function agentProviderLabel(provider: AgentProvider): string {

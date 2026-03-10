@@ -10,6 +10,8 @@ export declare class TaskManager {
     private commitTaskChanges;
     private publishTaskProcessComment;
     private isAgentRuntimeLog;
+    private getAgentSession;
+    private updateAgentSession;
     private runAgent;
     private parseReviewDecision;
     private runReviewLoop;

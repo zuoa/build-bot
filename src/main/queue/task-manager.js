@@ -74,7 +74,8 @@ export class TaskManager {
             taskType: input.taskType,
             status: 'pending',
             logs: [],
-            changedFiles: []
+            changedFiles: [],
+            agentSessions: {}
         };
         mainState.upsertTask(task);
         this.queue.push(task.id);
@@ -195,8 +196,37 @@ export class TaskManager {
             normalized === 'Codex 开始处理当前请求' ||
             normalized === 'Codex 执行中，等待新的输出...');
     }
+    getAgentSession(taskId, role, provider) {
+        const task = mainState.getTask(taskId);
+        const session = task?.agentSessions?.[role];
+        if (!session || session.provider !== provider) {
+            return undefined;
+        }
+        return session;
+    }
+    updateAgentSession(taskId, role, provider, sessionId) {
+        if (!sessionId) {
+            return;
+        }
+        const task = mainState.getTask(taskId);
+        if (!task) {
+            return;
+        }
+        mainState.patchTask(taskId, {
+            agentSessions: {
+                ...(task.agentSessions ?? {}),
+                [role]: {
+                    provider,
+                    sessionId,
+                    updatedAt: Date.now()
+                }
+            }
+        });
+        this.emitTask(taskId);
+    }
     async runAgent(params) {
         const output = [];
+        const storedSession = this.getAgentSession(params.taskId, params.role, params.provider);
         const result = await runAgentTask({
             provider: params.provider,
             cwd: params.cwd,
@@ -204,6 +234,7 @@ export class TaskManager {
             taskType: params.taskType,
             signal: params.signal,
             readOnly: params.readOnly,
+            sessionId: storedSession?.sessionId,
             onLog: (log) => {
                 if (!this.isAgentRuntimeLog(log.text)) {
                     output.push(log.text);
@@ -214,8 +245,9 @@ export class TaskManager {
                 });
             }
         });
-        if (result.trim()) {
-            output.push(result.trim());
+        this.updateAgentSession(params.taskId, params.role, params.provider, result.sessionId);
+        if (result.output.trim()) {
+            output.push(result.output.trim());
         }
         return output.join('\n');
     }
@@ -256,6 +288,7 @@ export class TaskManager {
             });
             const reviewOutput = await this.runAgent({
                 taskId: params.taskId,
+                role: 'review',
                 cwd: params.workspacePath,
                 prompt: this.buildReviewPrompt(params.promptContext, params.readmeHead, params.taskType, changedFiles, diffSummary, round, params.reviewStrictness),
                 taskType: params.taskType,
@@ -288,6 +321,7 @@ export class TaskManager {
             });
             await this.runAgent({
                 taskId: params.taskId,
+                role: 'implementation',
                 cwd: params.workspacePath,
                 prompt: this.buildRevisionPrompt(params.promptContext, params.readmeHead, params.taskType, changedFiles, diffSummary, decision, round),
                 taskType: params.taskType,
@@ -512,6 +546,7 @@ export class TaskManager {
             });
             await this.runAgent({
                 taskId,
+                role: 'implementation',
                 cwd: workspacePath,
                 prompt,
                 taskType: task.taskType,

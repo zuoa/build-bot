@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AgentProvider,
+  AgentSessionRole,
   EnqueueTaskInput,
   IssueDetail,
   ReviewStrictness,
   SubmissionMode,
+  TaskAgentSession,
   TaskEntity,
   TaskFileChange,
   TaskLog,
@@ -53,6 +55,7 @@ interface ReviewDecision {
 
 interface AgentRunParams {
   taskId: string;
+  role: AgentSessionRole;
   cwd: string;
   prompt: string;
   taskType: 'bugfix' | 'feature';
@@ -151,7 +154,8 @@ export class TaskManager {
       taskType: input.taskType,
       status: 'pending',
       logs: [],
-      changedFiles: []
+      changedFiles: [],
+      agentSessions: {}
     };
 
     mainState.upsertTask(task);
@@ -298,8 +302,50 @@ export class TaskManager {
     );
   }
 
+  private getAgentSession(
+    taskId: string,
+    role: AgentSessionRole,
+    provider: AgentProvider
+  ): TaskAgentSession | undefined {
+    const task = mainState.getTask(taskId);
+    const session = task?.agentSessions?.[role];
+    if (!session || session.provider !== provider) {
+      return undefined;
+    }
+    return session;
+  }
+
+  private updateAgentSession(
+    taskId: string,
+    role: AgentSessionRole,
+    provider: AgentProvider,
+    sessionId?: string
+  ): void {
+    if (!sessionId) {
+      return;
+    }
+
+    const task = mainState.getTask(taskId);
+    if (!task) {
+      return;
+    }
+
+    mainState.patchTask(taskId, {
+      agentSessions: {
+        ...(task.agentSessions ?? {}),
+        [role]: {
+          provider,
+          sessionId,
+          updatedAt: Date.now()
+        }
+      }
+    });
+    this.emitTask(taskId);
+  }
+
   private async runAgent(params: AgentRunParams): Promise<string> {
     const output: string[] = [];
+    const storedSession = this.getAgentSession(params.taskId, params.role, params.provider);
 
     const result = await runAgentTask({
       provider: params.provider,
@@ -308,6 +354,7 @@ export class TaskManager {
       taskType: params.taskType,
       signal: params.signal,
       readOnly: params.readOnly,
+      sessionId: storedSession?.sessionId,
       onLog: (log) => {
         if (!this.isAgentRuntimeLog(log.text)) {
           output.push(log.text);
@@ -319,8 +366,10 @@ export class TaskManager {
       }
     });
 
-    if (result.trim()) {
-      output.push(result.trim());
+    this.updateAgentSession(params.taskId, params.role, params.provider, result.sessionId);
+
+    if (result.output.trim()) {
+      output.push(result.output.trim());
     }
 
     return output.join('\n');
@@ -383,6 +432,7 @@ export class TaskManager {
 
       const reviewOutput = await this.runAgent({
         taskId: params.taskId,
+        role: 'review',
         cwd: params.workspacePath,
         prompt: this.buildReviewPrompt(
           params.promptContext,
@@ -430,6 +480,7 @@ export class TaskManager {
 
       await this.runAgent({
         taskId: params.taskId,
+        role: 'implementation',
         cwd: params.workspacePath,
         prompt: this.buildRevisionPrompt(
           params.promptContext,
@@ -701,6 +752,7 @@ export class TaskManager {
       });
       await this.runAgent({
         taskId,
+        role: 'implementation',
         cwd: workspacePath,
         prompt,
         taskType: task.taskType,
