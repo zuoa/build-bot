@@ -84,6 +84,8 @@ class MainState {
     this.selectedRepo = undefined;
     this.issues = [];
     this.selectedIssue = undefined;
+    this.tasks = [];
+    this.persistTasks();
   }
 
   private persistTasks(): void {

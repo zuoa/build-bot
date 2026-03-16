@@ -16,7 +16,6 @@ import {
   User,
   X
 } from 'lucide-react';
-import { marked } from 'marked';
 import { appendAutoModeLabel, normalizeAutoModeLabel } from '../shared/auto-mode-labels';
 import { DEFAULT_AUTO_ENQUEUE_LABELS } from '../shared/issue-auto-enqueue';
 import type {
@@ -32,8 +31,7 @@ import { buildLogDedupKey, normalizeVisibleLogText } from '../shared/log-dedupe'
 import AppLogo from './components/AppLogo';
 import { useAppStore } from './store/useAppStore';
 import { mergeLogs, formatLogsForCopy, logLevelLabel } from './utils/logUtils';
-
-marked.setOptions({ breaks: true, gfm: true });
+import { renderMarkdownSafely } from './utils/markdown';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 type WorkspaceView = 'tasks' | 'issues';
@@ -318,15 +316,6 @@ function formatTaskReference(task?: TaskEntity): string {
     return '等待任务';
   }
   return task.source === 'local' ? '本地任务' : `#${task.issueNumber}`;
-}
-
-function markdownHtml(content: string): string {
-  try {
-    const html = marked.parse(content) as string;
-    return html;
-  } catch {
-    return content;
-  }
 }
 
 function parseRepoTarget(
@@ -2208,7 +2197,7 @@ export default function App(): JSX.Element {
             <article
               className="markdown"
               dangerouslySetInnerHTML={{
-                __html: markdownHtml(selectedIssue.body || '_Issue 正文为空_')
+                __html: renderMarkdownSafely(selectedIssue.body || '_Issue 正文为空_')
               }}
             />
             <section className="comment-block">

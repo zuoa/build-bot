@@ -122,7 +122,7 @@ BuildBot Desktop 不是无条件执行器，当前版本已经加入了一些基
 
 - 仍以 PAT 登录为主，尚未接入完整 GitHub OAuth 流程
 - Prompt 自定义、多账号切换、通知系统仍未实现
-- Markdown 渲染暂未加入 DOM sanitizer
+- Markdown 渲染已加入基础 DOM sanitizer，但仍建议继续强化白名单策略
 - 依赖本机已有 `git` 与至少一个可用的 Agent CLI
 - Electron 打包配置已存在，但仓库里还没有整理完整发布流程
 

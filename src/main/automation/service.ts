@@ -72,7 +72,6 @@ export class AutoModeService {
         assignee: 'all',
         keyword: ''
       });
-      mainState.setIssues(issues);
 
       const existingIssueNumbers = new Set(
         mainState
